@@ -114,15 +114,77 @@ function List-Packages {
 # ---------------------------------------------
 # INSTALLATION ORCHESTRATION
 # ---------------------------------------------
-function Install-Package {
-    param([Parameter(Mandatory=$true)][string]$Path)
+function Invoke-RomsInstall {
+    param([Parameter(Mandatory=$true)][string]$Identifier)
 
-    if (-not (Test-Path $Path)) {
-        Write-Log "File not found: $Path" "ERROR"
-        return
+    $targetPath = $null
+
+    # 1. Check if it is a local file path
+    if (Test-Path $Identifier -PathType Leaf) {
+        $targetPath = (Resolve-Path $Identifier).Path
+    } 
+    # 2. Check the cache for a package name
+    else {
+        Write-Log "Searching registry for '$Identifier'..." "INFO"
+        
+        $cacheFiles = Get-ChildItem -Path $global:CACHE_DIR -Filter "*.index.json"
+        $pkgInfo = $null
+
+        foreach ($f in $cacheFiles) {
+            $data = Get-Content $f.FullName | ConvertFrom-Json
+            $pkgInfo = $data | Where-Object { $_.name -eq $Identifier }
+            if ($pkgInfo) { break }
+        }
+
+        if (-not $pkgInfo) {
+            Write-Log "Package '$Identifier' not found in registry. Try 'roms update'." "ERROR"
+            return
+        }
+
+        # 3. Download the Remote Package
+        if (-not (Test-Path $global:TEMP_DIR)) { New-Item -ItemType Directory -Path $global:TEMP_DIR -Force | Out-Null }
+        
+        $tempFile = Join-Path $global:TEMP_DIR "$($pkgInfo.name)-$($pkgInfo.version).rms"
+        Write-Log "Downloading $($pkgInfo.name) ($($pkgInfo.version))..." "INFO"
+        
+        try {
+            Invoke-WebRequest -Uri $pkgInfo.downloadUrl -OutFile $tempFile -UseBasicParsing
+            
+            # 4. SHA256 Verification
+            if ($pkgInfo.sha256 -and $pkgInfo.sha256 -ne "SKIP") {
+                Write-Log "Verifying integrity (SHA256)..." "INFO"
+                
+                $fileStream = $null
+                try {
+                    # Native .NET Implementation (Universal Support)
+                    $fileStream = [System.IO.File]::OpenRead($tempFile)
+                    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+                    $hashBytes = $sha256.ComputeHash($fileStream)
+                    $fileStream.Close()
+                    
+                    $hash = [System.BitConverter]::ToString($hashBytes).Replace("-", "").ToUpper()
+
+                    if ($hash -ne $pkgInfo.sha256.ToUpper()) {
+                        Write-Log "Security Alert: SHA256 mismatch! File may be corrupted or tampered with." "ERROR"
+                        Write-Log "Expected: $($pkgInfo.sha256.ToUpper())" "DEBUG"
+                        Write-Log "Actual:   $hash" "DEBUG"
+                        Remove-Item $tempFile -Force
+                        return
+                    }
+                    Write-Log "Integrity verified." "SUCCESS"
+                } finally {
+                    if ($fileStream) { $fileStream.Dispose() }
+                }
+            }
+            
+            $targetPath = $tempFile
+        } catch {
+            Write-Log "Download failed: $($_.Exception.Message)" "ERROR"
+            return
+        }
     }
 
-    # Resolve Engine Path (Assumes standard repo structure)
+    # 5. Resolve Engine Path
     $projectRoot = Split-Path (Split-Path $PSScriptRoot)
     $enginePath = Join-Path $projectRoot "package_installer\rmspkg.ps1"
 
@@ -131,14 +193,14 @@ function Install-Package {
         return
     }
 
-    Write-Log "Calling engine (rmspkg) for local installation..." "INFO"
-    & $enginePath $Path
+    Write-Log "Calling engine (rmspkg) to install package..." "INFO"
+    & $enginePath install $targetPath
 }
 
 # ---------------------------------------------
 # UNINSTALLATION ORCHESTRATION
 # ---------------------------------------------
-function Uninstall-Package {
+function Invoke-RomsUninstall {
     param([Parameter(Mandatory=$true)][string]$Name)
 
     # Resolve Engine Path
@@ -146,7 +208,7 @@ function Uninstall-Package {
     $enginePath = Join-Path $projectRoot "package_installer\rmspkg.ps1"
 
     Write-Log "Calling engine (rmspkg) to uninstall: $Name" "INFO"
-    & $enginePath $Name --uninstall
+    & $enginePath uninstall $Name
 }
 
 # ---------------------------------------------
