@@ -8,6 +8,7 @@ $global:BIN_DIR       = "$global:ROMS_ROOT\bin"
 $global:METADATA_DIR  = "$global:ROMS_ROOT\.metadata"
 $global:CACHE_DIR     = "$global:ROMS_ROOT\cache"
 $global:SOURCES_FILE  = "$global:ROMS_ROOT\sources.json"
+$global:ALTERNATIVES_FILE = "$global:ROMS_ROOT\alternatives.json"
 $global:OFFICIAL_REPO = "https://raw.githubusercontent.com/rrkroms/ROMs-util/main/index.json"
 
 $global:TEMP_DIR      = "$global:ROMS_ROOT\temp"

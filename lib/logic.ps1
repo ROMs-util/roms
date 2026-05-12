@@ -223,3 +223,31 @@ function Manage-Shim {
     # Logic to be moved from Engine to Manager in next sub-step
     Write-Log "Shim management for $CommandName not yet implemented in Manager layer." "WARN"
 }
+
+# ---------------------------------------------
+# ALTERNATIVES DATA HELPERS
+# ---------------------------------------------
+function Get-AlternativesData {
+    if (Test-Path $global:ALTERNATIVES_FILE) {
+        try {
+            # .NET Rule: Use native IO for Industrial Strength
+            $json = [System.IO.File]::ReadAllText($global:ALTERNATIVES_FILE)
+            return $json | ConvertFrom-Json
+        } catch {
+            Write-Log "Failed to parse alternatives database. Returning empty." "WARN"
+            return @{}
+        }
+    }
+    return @{}
+}
+
+function Set-AlternativesData {
+    param([Parameter(Mandatory=$true)]$Data)
+    try {
+        # .NET Rule: Use native IO for Industrial Strength
+        $json = $Data | ConvertTo-Json -Depth 10
+        [System.IO.File]::WriteAllText($global:ALTERNATIVES_FILE, $json, [System.Text.Encoding]::UTF8)
+    } catch {
+        Write-Log "Failed to save alternatives database: $($_.Exception.Message)" "ERROR"
+    }
+}
