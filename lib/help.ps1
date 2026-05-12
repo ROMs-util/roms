@@ -7,6 +7,8 @@ function Show-Help {
     Write-Host ""
     Write-Host "Usage:"
     Write-Host "  roms list                    - List all installed packages"
+    Write-Host "  roms update                  - Fetch latest package registry"
+    Write-Host "  roms search <query>          - Find packages in the registry"
     Write-Host "  roms install <path>          - Install a local .rms package"
     Write-Host "  roms uninstall <name>        - Remove an installed package"
     Write-Host "  roms help                    - Show this menu"

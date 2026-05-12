@@ -37,6 +37,8 @@ if ($command -in @("install", "uninstall", "update", "upgrade", "verify")) {
 try {
     switch ($command) {
         "list"      { List-Packages }
+        "update"    { Update-Registry }
+        "search"    { Search-Packages -Query $subArgs[0] }
         "install"   { 
             if (-not $subArgs[0]) { Write-Log "Path to .rms file required." "ERROR"; break }
             Install-Package -Path $subArgs[0] 
