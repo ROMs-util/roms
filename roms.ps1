@@ -25,10 +25,17 @@ $global:AutoConfirm = ($args -contains "-y") -or ($args -contains "--yes")
 $global:Verbose     = ($args -contains "-v") -or ($args -contains "--verbose")
 
 # ---------------------------------------------
+# COMMAND NORMALIZATION (Modern Standard)
+# ---------------------------------------------
+# Default to help if nothing provided or help requested
+if (-not $command -or $command -eq "help") {
+    Show-Help
+    exit 0
+}
+
+# ---------------------------------------------
 # COMMAND ROUTING
 # ---------------------------------------------
-if (-not $command) { Show-Help; exit }
-
 # Start Transaction for modifying commands
 if ($command -in @("install", "uninstall", "update", "upgrade", "verify")) {
     Enter-RomsTransaction
@@ -40,14 +47,13 @@ try {
         "update"    { Update-Registry }
         "search"    { Search-Packages -Query $subArgs[0] }
         "install"   { 
-            if (-not $subArgs[0]) { Write-Log "Path to .rms file required." "ERROR"; break }
-            Install-Package -Path $subArgs[0] 
+            if (-not $subArgs[0]) { Write-Log "Package name or .rms path required." "ERROR"; break }
+            Invoke-RomsInstall -Identifier $subArgs[0] 
         }
         "uninstall" { 
             if (-not $subArgs[0]) { Write-Log "Package name required." "ERROR"; break }
-            Uninstall-Package -Name $subArgs[0] 
+            Invoke-RomsUninstall -Name $subArgs[0] 
         }
-        "help"      { Show-Help }
         Default     { 
             Write-Log "Unknown command: $command" "ERROR"
             Show-Help 
@@ -56,3 +62,4 @@ try {
 } finally {
     Exit-RomsTransaction
 }
+
