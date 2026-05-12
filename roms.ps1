@@ -18,7 +18,7 @@ if (-not (Test-Path $libPath)) {
 # ARGUMENT PARSING
 # ---------------------------------------------
 $command = $args[0]
-$subArgs = @($args | Select-Object -Skip 1)
+$subArgs = [array]($args | Select-Object -Skip 1)
 
 # Handle global flags
 $global:AutoConfirm = ($args -contains "-y") -or ($args -contains "--yes")
