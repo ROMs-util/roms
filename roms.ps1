@@ -38,6 +38,14 @@ if (-not $command -or $command -eq "help") {
 # ---------------------------------------------
 # COMMAND ROUTING
 # ---------------------------------------------
+# Resolve local paths early to handle elevation/context changes
+if ($command -eq "install" -and $subArgs[0] -and (Test-Path $subArgs[0] -PathType Leaf)) {
+    $absolutePath = (Resolve-Path $subArgs[0]).Path
+    $subArgs[0] = $absolutePath
+    # Update OriginalArgs so the relaunch uses the absolute path
+    $global:OriginalArgs = @($command) + $subArgs
+}
+
 # Start Transaction for modifying commands
 if ($command -in @("install", "uninstall", "upgrade", "verify")) {
     Confirm-RomsElevation | Out-Null
@@ -65,4 +73,3 @@ try {
 } finally {
     Exit-RomsTransaction
 }
-
