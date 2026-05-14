@@ -325,6 +325,12 @@ function Unregister-Alternative {
             if ($entry.selected -eq $packageId) {
                 $entry.selected = $null
                 
+                # Safety fallback: If selected provider is gone, revert to auto mode
+                if ($entry.mode -eq "manual") {
+                    Write-Log "Manual provider for '$cmdName' uninstalled. Reverting to auto mode." "WARN"
+                    $entry.mode = "auto"
+                }
+
                 if ($entry.mode -eq "auto") {
                     # Pick next best provider (highest priority)
                     $nextBest = $entry.providers | Sort-Object priority -Descending | Select-Object -First 1
@@ -344,6 +350,93 @@ function Unregister-Alternative {
     if ($changed) {
         Set-AlternativesData -Data $data
     }
+}
+
+function Select-RomsAlternative {
+    param(
+        [string]$CommandName,
+        [string]$Selection
+    )
+
+    $data = Get-AlternativesData
+    
+    # 1. List managed commands if none provided
+    if (-not $CommandName) {
+        Write-Host "`n----- Managed Commands (Alternatives) -----" -ForegroundColor Cyan
+        $data.PSObject.Properties | ForEach-Object {
+            $name = $_.Name
+            $val = $_.Value
+            $status = if ($val.mode -eq "manual") { "LOCKED ($($val.selected))" } else { "AUTO ($($val.selected))" }
+            Write-Host "  $($name.PadRight(20)) - $status"
+        }
+        Write-Host ""
+        return
+    }
+
+    # 2. Verify command exists
+    if ($null -eq $data.$CommandName) {
+        Write-Log "Command '$CommandName' is not managed by the alternatives system." "ERROR"
+        return
+    }
+
+    $entry = $data.$CommandName
+
+    # 3. Handle 'auto' revert
+    if ($Selection -eq "auto") {
+        Write-Log "Reverting '$CommandName' to auto mode..." "INFO"
+        $entry.mode = "auto"
+        $nextBest = $entry.providers | Sort-Object priority -Descending | Select-Object -First 1
+        if ($nextBest) {
+            $entry.selected = $nextBest.package
+            Manage-Shim -CommandName $CommandName -ExecutablePath $nextBest.path
+        }
+        Set-AlternativesData -Data $data
+        Write-Log "Success: '$CommandName' is now managed automatically." "SUCCESS"
+        return
+    }
+
+    # 4. Interactive selection if no provider specified
+    $targetProvider = $null
+    if (-not $Selection) {
+        Write-Host "`nSelect a provider for '$CommandName':" -ForegroundColor Cyan
+        $i = 1
+        foreach ($p in $entry.providers) {
+            $mark = if ($entry.selected -eq $p.package) { "*" } else { " " }
+            Write-Host "  [$i] $mark $($p.package) ($($p.path))"
+            $i++
+        }
+        Write-Host "  [a]   Switch to Auto Mode"
+        
+        $choice = Read-Host "`nEnter selection (1-$($i-1) or 'a')"
+        if ($choice -eq "a") {
+            Select-RomsAlternative -CommandName $CommandName -Selection "auto"
+            return
+        }
+
+        if ([int]::TryParse($choice, [ref]0) -and ($choice -ge 1) -and ($choice -lt $i)) {
+            $targetProvider = $entry.providers[$choice - 1]
+        } else {
+            Write-Log "Invalid selection." "ERROR"
+            return
+        }
+    } else {
+        # Search by packageId or name
+        $targetProvider = $entry.providers | Where-Object { $_.package -eq $Selection -or $_.package -like "$Selection-*" } | Select-Object -First 1
+    }
+
+    if (-not $targetProvider) {
+        Write-Log "Provider '$Selection' not found for command '$CommandName'." "ERROR"
+        return
+    }
+
+    # 5. Apply Manual Lock
+    Write-Log "Manually selecting $($targetProvider.package) for '$CommandName'..." "INFO"
+    $entry.mode = "manual"
+    $entry.selected = $targetProvider.package
+    Manage-Shim -CommandName $CommandName -ExecutablePath $targetProvider.path
+    
+    Set-AlternativesData -Data $data
+    Write-Log "Success: '$CommandName' is now locked to $($targetProvider.package)." "SUCCESS"
 }
 
 function Register-Alternative {
