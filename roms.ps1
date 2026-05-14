@@ -4,6 +4,7 @@
 # ---------------------------------------------
 # BOOTSTRAP LIBRARY
 # ---------------------------------------------
+$global:EntryScriptPath = $MyInvocation.MyCommand.Definition
 $libPath = Join-Path $PSScriptRoot "lib"
 if (-not (Test-Path $libPath)) {
     Write-Error "[FATAL] Library folder not found at $libPath"
@@ -17,6 +18,7 @@ if (-not (Test-Path $libPath)) {
 # ---------------------------------------------
 # ARGUMENT PARSING
 # ---------------------------------------------
+$global:OriginalArgs = $args
 $command = $args[0]
 $subArgs = [array]($args | Select-Object -Skip 1)
 
@@ -37,7 +39,8 @@ if (-not $command -or $command -eq "help") {
 # COMMAND ROUTING
 # ---------------------------------------------
 # Start Transaction for modifying commands
-if ($command -in @("install", "uninstall", "update", "upgrade", "verify")) {
+if ($command -in @("install", "uninstall", "upgrade", "verify")) {
+    Confirm-RomsElevation | Out-Null
     Enter-RomsTransaction
 }
 
