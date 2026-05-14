@@ -20,7 +20,7 @@ if (-not (Test-Path $libPath)) {
 # ---------------------------------------------
 $global:OriginalArgs = $args
 $command = $args[0]
-$subArgs = [array]($args | Select-Object -Skip 1)
+$subArgs = @($args | Select-Object -Skip 1)
 
 # Handle global flags
 $global:AutoConfirm = ($args -contains "-y") -or ($args -contains "--yes")
@@ -47,7 +47,7 @@ if ($command -eq "install" -and $subArgs[0] -and (Test-Path $subArgs[0] -PathTyp
 }
 
 # Start Transaction for modifying commands
-if ($command -in @("install", "uninstall", "upgrade", "verify")) {
+if ($command -in @("install", "uninstall", "upgrade", "verify", "select")) {
     Confirm-RomsElevation | Out-Null
     Enter-RomsTransaction
 }
@@ -57,6 +57,7 @@ try {
         "list"      { List-Packages }
         "update"    { Update-Registry }
         "search"    { Search-Packages -Query $subArgs[0] }
+        "select"    { Select-RomsAlternative -CommandName $subArgs[0] -Selection $subArgs[1] }
         "install"   { 
             if (-not $subArgs[0]) { Write-Log "Package name or .rms path required." "ERROR"; break }
             Invoke-RomsInstall -Identifier $subArgs[0] 
