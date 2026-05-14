@@ -115,7 +115,7 @@ function List-Packages {
 # INSTALLATION ORCHESTRATION
 # ---------------------------------------------
 function Invoke-RomsInstall {
-    param([Parameter(Mandatory=$true)][string]$Identifier)
+    param([string]$Identifier)
 
     $targetPath = $null
 
@@ -219,14 +219,27 @@ function Invoke-RomsInstall {
 # UNINSTALLATION ORCHESTRATION
 # ---------------------------------------------
 function Invoke-RomsUninstall {
-    param([Parameter(Mandatory=$true)][string]$Name)
+    param([string]$Name)
 
-    # Resolve Engine Path
+    # 1. Identify packageId BEFORE engine deletes metadata
+    $packageId = $null
+    $metaFile = Join-Path $global:METADATA_DIR "$Name.json"
+    if (Test-Path $metaFile) {
+        try {
+            $meta = Get-Content $metaFile -Raw | ConvertFrom-Json
+            $packageId = if ($meta.version) { "$($meta.name)-$($meta.version)" } else { $meta.name }
+        } catch {}
+    }
+
+    # 2. Resolve Engine Path
     $projectRoot = Split-Path (Split-Path $PSScriptRoot)
     $enginePath = Join-Path $projectRoot "package_installer\rmspkg.ps1"
 
     Write-Log "Calling engine (rmspkg) to uninstall: $Name" "INFO"
-    & $enginePath uninstall $Name
+    & $enginePath uninstall $Name -yes:$global:AutoConfirm
+
+    # 3. Auto-Pivot: Handle alternatives unregistration
+    Unregister-Alternative -Name $Name -PackageId $packageId
 }
 
 # ---------------------------------------------
@@ -273,6 +286,66 @@ function Manage-Shim {
     return $null
 }
 
+function Unregister-Alternative {
+    param(
+        [string]$Name,
+        [string]$PackageId
+    )
+
+    $data = Get-AlternativesData
+    $changed = $false
+    
+    if (-not $PackageId -and $Name) {
+        # Identify the package ID being uninstalled (from metadata)
+        $metaFile = Join-Path $global:METADATA_DIR "$Name.json"
+        if (Test-Path $metaFile) {
+            try {
+                $meta = [System.IO.File]::ReadAllText($metaFile) | ConvertFrom-Json
+                $PackageId = if ($meta.version) { "$($meta.name)-$($meta.version)" } else { $meta.name }
+            } catch {
+                Write-Log "Failed to read metadata for $Name during unregistration." "WARN"
+            }
+        }
+    }
+
+    if (-not $PackageId) { return }
+
+    # 2. Iterate through all commands in the alternatives DB
+    foreach ($cmdName in $data.PSObject.Properties.Name) {
+        $entry = $data.$cmdName
+        
+        # 3. Check if this package is a provider for this command
+        $isProvider = $entry.providers | Where-Object { $_.package -eq $packageId }
+        if ($isProvider) {
+            Write-Log "Unregistering provider for '$cmdName': $packageId" "INFO"
+            $entry.providers = @($entry.providers | Where-Object { $_.package -ne $packageId })
+            $changed = $true
+
+            # 4. Handle Auto-Pivot
+            if ($entry.selected -eq $packageId) {
+                $entry.selected = $null
+                
+                if ($entry.mode -eq "auto") {
+                    # Pick next best provider (highest priority)
+                    $nextBest = $entry.providers | Sort-Object priority -Descending | Select-Object -First 1
+                    if ($nextBest) {
+                        Write-Log "Auto-Pivot: Switching '$cmdName' to $($nextBest.package)" "SUCCESS"
+                        $entry.selected = $nextBest.package
+                        Manage-Shim -CommandName $cmdName -ExecutablePath $nextBest.path
+                    } else {
+                        # No providers left, remove shim
+                        Manage-Shim -CommandName $cmdName -Remove
+                    }
+                }
+            }
+        }
+    }
+
+    if ($changed) {
+        Set-AlternativesData -Data $data
+    }
+}
+
 function Register-Alternative {
     param(
         [Parameter(Mandatory=$true)][string]$PackageId,
@@ -291,8 +364,8 @@ function Register-Alternative {
         # Determine command name
         $cmdName = if ($PrimaryExec -and $execPath -eq $PrimaryExec) { $AppName } else { $filename }
         
-        # Initialize entry if new
-        if (-not $data.PSObject.Properties[$cmdName]) {
+        # Initialize entry if new (Reliable check)
+        if ($null -eq $data.$cmdName) {
             $data | Add-Member -MemberType NoteProperty -Name $cmdName -Value @{
                 mode = "auto"
                 selected = $null
@@ -311,7 +384,7 @@ function Register-Alternative {
                 path     = $execPath
                 priority = 100
             }
-            $entry.providers += $newProvider
+            $entry.providers = [array]($entry.providers + $newProvider)
             $changed = $true
             Write-Log "Registered provider for '$cmdName': $PackageId" "INFO"
         }
@@ -334,9 +407,10 @@ function Register-Alternative {
         Set-AlternativesData -Data $data
     }
 
-    # --- Update Metadata Registry (Artifact Tracking) ---
     if ($createdShims.Count -gt 0) {
-        $metaFile = Join-Path $global:METADATA_DIR "$AppName.json"
+        # Derive package name from PackageId (name-version)
+        $packageName = if ($PackageId -match '(.+)-[0-9.]+$') { $Matches[1] } else { $PackageId }
+        $metaFile = Join-Path $global:METADATA_DIR "$packageName.json"
         if (Test-Path $metaFile) {
             try {
                 $meta = [System.IO.File]::ReadAllText($metaFile) | ConvertFrom-Json
@@ -375,10 +449,9 @@ function Get-AlternativesData {
             return $json | ConvertFrom-Json
         } catch {
             Write-Log "Failed to parse alternatives database. Returning empty." "WARN"
-            return @{}
         }
     }
-    return @{}
+    return [PSCustomObject]@{}
 }
 
 function Set-AlternativesData {

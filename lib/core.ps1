@@ -91,9 +91,9 @@ function Confirm-RomsElevation {
         $joinedArgs = $escapedArgs -join " "
         
         $powershellCommand = "& '$scriptPath' $joinedArgs"
-        
         try {
-            Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -NoExit -Command `"$powershellCommand`""
+            $currentDir = (Get-Location).Path
+            Start-Process powershell -Verb RunAs -WorkingDirectory $currentDir -ArgumentList "-NoExit -ExecutionPolicy Bypass -Command `"$powershellCommand`""
             exit 0 # Exit the non-elevated process
         } catch {
             Write-Log "Elevation failed or was cancelled by user." "ERROR"
