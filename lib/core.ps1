@@ -77,3 +77,28 @@ function Exit-RomsTransaction {
         Remove-Item $global:LOCK_FILE -Force
     }
 }
+
+# ---------------------------------------------
+# ELEVATION UTILITY (Manager Level)
+# ---------------------------------------------
+function Confirm-RomsElevation {
+    $currentUser = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+    if (-not $currentUser.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        Write-Log "Elevation required for system modification. Requesting Administrator privileges..." "INFO"
+        
+        $scriptPath = $global:EntryScriptPath
+        $escapedArgs = $global:OriginalArgs | ForEach-Object { if ($_ -match ' ') { "`"$_`"" } else { $_ } }
+        $joinedArgs = $escapedArgs -join " "
+        
+        $powershellCommand = "& '$scriptPath' $joinedArgs"
+        
+        try {
+            Start-Process powershell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -NoExit -Command `"$powershellCommand`""
+            exit 0 # Exit the non-elevated process
+        } catch {
+            Write-Log "Elevation failed or was cancelled by user." "ERROR"
+            exit 1
+        }
+    }
+    return $true
+}

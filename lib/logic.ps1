@@ -194,7 +194,25 @@ function Invoke-RomsInstall {
     }
 
     Write-Log "Calling engine (rmspkg) to install package..." "INFO"
-    & $enginePath install $targetPath
+    
+    # Execute rmspkg and capture output
+    $engineOutput = & $enginePath install $targetPath -noShim
+    
+    # Parse JSON report from engine output
+    $jsonMatch = $engineOutput | Where-Object { $_ -match "^\s*\{.*\}\s*$" }
+    if ($jsonMatch) {
+        try {
+            $report = $jsonMatch | ConvertFrom-Json
+            Write-Log "Engine reported successful installation of $($report.packageId)." "SUCCESS"
+            
+            # Step 3: Trigger Registration
+            Register-Alternative -PackageId $report.packageId -AppName $report.commandName -Executables $report.executables -PrimaryExec $report.primaryExecutable
+        } catch {
+            Write-Log "Failed to parse Engine report: $($_.Exception.Message)" "WARN"
+        }
+    } else {
+        Write-Log "Engine finished but did not provide a JSON report." "WARN"
+    }
 }
 
 # ---------------------------------------------
@@ -212,16 +230,138 @@ function Invoke-RomsUninstall {
 }
 
 # ---------------------------------------------
-# SHIM MANAGEMENT (Placeholder for Phase 2)
+# SHIM MANAGEMENT & ALTERNATIVES
 # ---------------------------------------------
 function Manage-Shim {
     param(
-        [string]$CommandName,
+        [Parameter(Mandatory=$true)][string]$CommandName,
         [string]$ExecutablePath,
         [switch]$Remove
     )
-    # Logic to be moved from Engine to Manager in next sub-step
-    Write-Log "Shim management for $CommandName not yet implemented in Manager layer." "WARN"
+
+    $shimPath = Join-Path $global:BIN_DIR "$CommandName.bat"
+
+    if ($Remove) {
+        if (Test-Path $shimPath) {
+            Write-Log "Removing shim: $CommandName" "INFO"
+            [System.IO.File]::Delete($shimPath)
+        }
+        return
+    }
+
+    if (-not $ExecutablePath) { return }
+
+    Write-Log "Creating shim: $CommandName -> $ExecutablePath" "INFO"
+    
+    # .NET Rule: Industrial Strength writing
+    $content = if ($ExecutablePath.EndsWith(".ps1", [System.StringComparison]::OrdinalIgnoreCase)) {
+        "@echo off`npowershell -ExecutionPolicy Bypass -File ""$ExecutablePath"" %*"
+    } else {
+        "@echo off`ncall ""$ExecutablePath"" %*"
+    }
+
+    try {
+        if (-not (Test-Path $global:BIN_DIR)) {
+            New-Item -ItemType Directory -Path $global:BIN_DIR -Force | Out-Null
+        }
+        [System.IO.File]::WriteAllText($shimPath, $content, [System.Text.Encoding]::ASCII)
+        Write-Log "Shim created successfully." "SUCCESS"
+        return $shimPath # Return path for artifact tracking
+    } catch {
+        Write-Log "Failed to create shim: $($_.Exception.Message)" "ERROR"
+    }
+    return $null
+}
+
+function Register-Alternative {
+    param(
+        [Parameter(Mandatory=$true)][string]$PackageId,
+        [Parameter(Mandatory=$true)][string]$AppName,
+        [Parameter(Mandatory=$true)][array]$Executables,
+        [string]$PrimaryExec
+    )
+
+    $data = Get-AlternativesData
+    $changed = $false
+    $createdShims = @()
+
+    foreach ($execPath in $Executables) {
+        $filename = [System.IO.Path]::GetFileNameWithoutExtension($execPath)
+        
+        # Determine command name
+        $cmdName = if ($PrimaryExec -and $execPath -eq $PrimaryExec) { $AppName } else { $filename }
+        
+        # Initialize entry if new
+        if (-not $data.PSObject.Properties[$cmdName]) {
+            $data | Add-Member -MemberType NoteProperty -Name $cmdName -Value @{
+                mode = "auto"
+                selected = $null
+                providers = @()
+            }
+            $changed = $true
+        }
+
+        $entry = $data.$cmdName
+        
+        # Check if already registered as a provider
+        $existing = $entry.providers | Where-Object { $_.package -eq $PackageId }
+        if (-not $existing) {
+            $newProvider = @{
+                package  = $PackageId
+                path     = $execPath
+                priority = 100
+            }
+            $entry.providers += $newProvider
+            $changed = $true
+            Write-Log "Registered provider for '$cmdName': $PackageId" "INFO"
+        }
+
+        # Ensure shim exists if this is the selected package (Auto Mode)
+        # ONLY shim the primary executable to avoid clutter
+        if ($PrimaryExec -and $execPath -eq $PrimaryExec) {
+            if ($entry.mode -eq "auto") {
+                if (-not $entry.selected -or ($entry.selected -eq $PackageId)) {
+                    $entry.selected = $PackageId
+                    $changed = $true
+                    $shim = Manage-Shim -CommandName $cmdName -ExecutablePath $execPath
+                    if ($shim) { $createdShims += $shim }
+                }
+            }
+        }
+    }
+
+    if ($changed) {
+        Set-AlternativesData -Data $data
+    }
+
+    # --- Update Metadata Registry (Artifact Tracking) ---
+    if ($createdShims.Count -gt 0) {
+        $metaFile = Join-Path $global:METADATA_DIR "$AppName.json"
+        if (Test-Path $metaFile) {
+            try {
+                $meta = [System.IO.File]::ReadAllText($metaFile) | ConvertFrom-Json
+                
+                # Merge artifacts
+                if (-not $meta.artifacts) { $meta | Add-Member -MemberType NoteProperty -Name "artifacts" -Value @() -Force }
+                
+                $artifactsUpdated = $false
+                foreach ($s in $createdShims) {
+                    if ($meta.artifacts -notcontains $s) { 
+                        $meta.artifacts += $s 
+                        $artifactsUpdated = $true
+                    }
+                }
+                
+                if ($artifactsUpdated) {
+                    $json = $meta | ConvertTo-Json -Depth 10
+                    [System.IO.File]::WriteAllText($metaFile, $json, [System.Text.Encoding]::UTF8)
+                    Write-Log "Updated metadata artifacts for $AppName." "SUCCESS"
+                }
+            } catch {
+                Write-Log "Failed to update metadata artifacts: $($_.Exception.Message)" "WARN"
+            }
+        }
+    }
 }
 
 # ---------------------------------------------
