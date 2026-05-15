@@ -2,7 +2,7 @@
 # Usage: roms <command> [args]
 
 # ---------------------------------------------
-# BOOTSTRAP LIBRARY
+# BOOTSTRAP LIBRARY (Industrial Strength)
 # ---------------------------------------------
 $global:EntryScriptPath = $MyInvocation.MyCommand.Definition
 $libPath = Join-Path $PSScriptRoot "lib"
@@ -11,9 +11,14 @@ if (-not (Test-Path $libPath)) {
     exit 1
 }
 
-. (Join-Path $libPath "core.ps1")
-. (Join-Path $libPath "help.ps1")
-. (Join-Path $libPath "logic.ps1")
+# Load Modules in safe Foundation-First order
+. (Join-Path $libPath "core.ps1")         # Foundations
+. (Join-Path $libPath "util.ps1")         # Primitives
+. (Join-Path $libPath "help.ps1")         # UI
+. (Join-Path $libPath "sync.ps1")         # Registry
+. (Join-Path $libPath "discovery.ps1")    # Search
+. (Join-Path $libPath "alternatives.ps1") # Environment
+. (Join-Path $libPath "orchestrator.ps1") # Brain (Loaded last)
 
 # ---------------------------------------------
 # ARGUMENT PARSING
