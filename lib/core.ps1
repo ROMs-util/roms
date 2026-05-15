@@ -23,7 +23,7 @@ $global:MASTER_LOG    = "$global:LOG_DIR\roms.log"
 function Write-Log {
     param(
         [Parameter(Mandatory=$true)][string]$Message,
-        [ValidateSet("INFO", "WARN", "ERROR", "SUCCESS")][string]$Level = "INFO"
+        [ValidateSet("INFO", "WARN", "ERROR", "SUCCESS", "DEBUG")][string]$Level = "INFO"
     )
 
     if (-not (Test-Path $global:LOG_DIR)) {
