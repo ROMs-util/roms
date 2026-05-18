@@ -17,6 +17,7 @@ if (-not (Test-Path $libPath)) {
 . (Join-Path $libPath "help.ps1")         # UI
 . (Join-Path $libPath "sync.ps1")         # Registry
 . (Join-Path $libPath "discovery.ps1")    # Search
+. (Join-Path $libPath "resolver.ps1")     # Dependencies
 . (Join-Path $libPath "alternatives.ps1") # Environment
 . (Join-Path $libPath "orchestrator.ps1") # Brain (Loaded last)
 
