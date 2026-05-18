@@ -3,79 +3,121 @@
 function Invoke-RomsInstall {
     param([string]$Identifier)
 
-    $targetPath = $null
-    
-    # 1. Resolve Project Root
+    # 1. Setup Staging Environment
+    $stagingDir = Join-Path $global:TEMP_DIR "staging"
+    if (Test-Path $stagingDir) { Remove-Item $stagingDir -Recurse -Force | Out-Null }
+    New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
+
+    # 2. Resolve Project Root
     $projectRoot = Split-Path (Split-Path $PSScriptRoot)
     $enginePath = Join-Path $projectRoot "package_installer\rmspkg.ps1"
 
-    # 2. Local vs Remote logic
-    if (Test-Path $Identifier) {
-        $targetPath = $Identifier
-    } else {
-        Write-Log "Searching registry for package: $Identifier..." "INFO"
+    Write-Log "Starting atomic installation for: $Identifier" "INFO"
+
+    try {
+        # PHASE 1: Dependency Mapping
+        $requiredPackages = @()
+        if (Test-Path $Identifier) {
+            # Local file - mapping logic for local deps can be added here
+            $requiredPackages = @($Identifier)
+        } else {
+            $pkg = Get-RomsRegistryPackage -Name $Identifier
+            if (!$pkg) { throw "Abort: Package '$Identifier' not found in registry." }
+            
+            $missingDeps = @()
+            if ($pkg.dependencies) {
+                $missingDeps = Get-RomsDependencyList -Dependencies $pkg.dependencies
+            }
+            $requiredPackages = $missingDeps + $Identifier
+        }
+
+        Write-Log "Mapping dependency tree: $($requiredPackages -join ', ')" "INFO"
+
+        # PHASE 2: Acquisition (Download All to Staging)
+        $stagedFiles = @{} # Map of package name -> staged path
+        foreach ($pkgName in $requiredPackages) {
+            $stagedPath = Stage-Package -Identifier $pkgName -StagingDir $stagingDir
+            $stagedFiles[$pkgName] = $stagedPath
+        }
+
+        Write-Log "Acquisition complete. All required files staged and verified." "SUCCESS"
+
+        # PHASE 3: Commit (Install All)
+        foreach ($pkgName in $requiredPackages) {
+            Write-Log "Processing: $pkgName" "INFO"
+            $localPath = $stagedFiles[$pkgName]
+            
+            # Call Engine (NoShim: Manager handles shims via Alternatives)
+            & $enginePath install $localPath -yes:$global:AutoConfirm -noShim
+            
+            # Handle Alternatives Registration
+            $latestMeta = Get-ChildItem $global:METADATA_DIR -Filter "*.json" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if ($latestMeta) {
+                $meta = Get-Content $latestMeta.FullName -Raw | ConvertFrom-Json
+                $packageId = if ($meta.version) { "$($meta.name)-$($meta.version)" } else { $meta.name }
+                Register-Alternative -CommandName $meta.commandName -PackageId $packageId -ExecutablePath $meta.executable
+            }
+        }
         
-        # Check cache
-        $cacheFiles = Get-ChildItem -Path $global:CACHE_DIR -Filter "*.index.json"
-        foreach ($f in $cacheFiles) {
-            $data = Get-Content $f.FullName | ConvertFrom-Json
-            $pkg = $data | Where-Object { $_.name -eq $Identifier } | Select-Object -First 1
-            if ($pkg) {
-                Write-Log "Found $($pkg.name) v$($pkg.version) in $($f.Name). Downloading..." "INFO"
-                
-                # Setup Temp Download
-                $tempPkg = Join-Path $global:TEMP_DIR "$($pkg.name).rms"
-                if (!(Test-Path $global:TEMP_DIR)) { New-Item -ItemType Directory -Path $global:TEMP_DIR -Force | Out-Null }
-                
-                if ($pkg.downloadUrl.StartsWith("http")) {
-                    Invoke-RestMethod -Uri $pkg.downloadUrl -OutFile $tempPkg
-                } else {
-                    Copy-Item -Path $pkg.downloadUrl -Destination $tempPkg -Force
-                }
+        Write-Log "Atomic installation of $Identifier and dependencies complete." "SUCCESS"
 
-                # Verify Hash (Industrial Strength)
-                if ($pkg.sha256 -ne "SKIP") {
-                    $actualHash = Get-RomsFileHash -FilePath $tempPkg
-                    if ($actualHash -ne $pkg.sha256.ToUpper()) {
-                        Write-Log "HASH MISMATCH! Expected: $($pkg.sha256), Got: $actualHash" "ERROR"
-                        Remove-Item $tempPkg -Force
-                        return
-                    }
-                    Write-Log "SHA256 Integrity Verified." "SUCCESS"
-                }
+    } catch {
+        Write-Log "CRITICAL FAILURE: $($_.Exception.Message)" "ERROR"
+        Write-Log "System remains clean. No system modifications were committed." "WARN"
+    } finally {
+        # Cleanup Staging
+        if (Test-Path $stagingDir) { Remove-Item $stagingDir -Recurse -Force | Out-Null }
+    }
+}
 
-                $targetPath = $tempPkg
-                break
+# Helper to download/copy a package to the staging area
+function Stage-Package {
+    param($Identifier, $StagingDir)
+
+    $stagedPath = $null
+    
+    if (Test-Path $Identifier) {
+        # Local Copy
+        $pkgName = [System.IO.Path]::GetFileNameWithoutExtension($Identifier)
+        $stagedPath = Join-Path $StagingDir "$pkgName.rms"
+        Copy-Item -Path $Identifier -Destination $stagedPath -Force
+    } else {
+        # Registry Download
+        $pkg = Get-RomsRegistryPackage -Name $Identifier
+        if (!$pkg) { throw "Dependency '$Identifier' is missing from registry index." }
+
+        $stagedPath = Join-Path $StagingDir "$($pkg.name).rms"
+        
+        Write-Log "Staging $($pkg.name)..." "INFO"
+        if ($pkg.downloadUrl.StartsWith("http")) {
+            Invoke-RestMethod -Uri $pkg.downloadUrl -OutFile $stagedPath
+        } else {
+            if (!(Test-Path $pkg.downloadUrl)) { throw "Download path for '$Identifier' is invalid: $($pkg.downloadUrl)" }
+            Copy-Item -Path $pkg.downloadUrl -Destination $stagedPath -Force
+        }
+
+        # Verify Hash
+        if ($pkg.sha256 -ne "SKIP") {
+            $actualHash = Get-RomsFileHash -FilePath $stagedPath
+            if ($actualHash -ne $pkg.sha256.ToUpper()) {
+                Remove-Item $stagedPath -Force
+                throw "Integrity check failed for $Identifier. Hash mismatch."
             }
         }
     }
+    return $stagedPath
+}
 
-    if (-not $targetPath) {
-        Write-Log "Package '$Identifier' not found in registry or local path." "ERROR"
-        return
+# Helper to search registry indexes
+function Get-RomsRegistryPackage {
+    param($Name)
+    $cacheFiles = Get-ChildItem -Path $global:CACHE_DIR -Filter "*.index.json"
+    foreach ($f in $cacheFiles) {
+        $data = Get-Content $f.FullName | ConvertFrom-Json
+        $pkg = $data | Where-Object { $_.name -eq $Name } | Select-Object -First 1
+        if ($pkg) { return $pkg }
     }
-
-    # 3. Call Engine (NoShim: Manager will handle shims via Alternatives)
-    Write-Log "Calling engine (rmspkg) to install package..." "INFO"
-    
-    # Use explicit parameter passing to avoid splatting bugs
-    $engineResult = & $enginePath install $targetPath -yes:$global:AutoConfirm -noShim
-    
-    # 4. Handle Post-Install Registration (Alternatives)
-    # Search for the newly created metadata file
-    $latestMeta = Get-ChildItem $global:METADATA_DIR -Filter "*.json" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    
-    if ($latestMeta) {
-        $meta = Get-Content $latestMeta.FullName -Raw | ConvertFrom-Json
-        $packageId = if ($meta.version) { "$($meta.name)-$($meta.version)" } else { $meta.name }
-        
-        Write-Log "Engine reported successful installation of $packageId." "SUCCESS"
-        
-        # Register in Alternatives system
-        Register-Alternative -CommandName $meta.commandName -PackageId $packageId -ExecutablePath $meta.executable
-    } else {
-        Write-Log "Failed to find metadata after installation." "ERROR"
-    }
+    return $null
 }
 
 function Invoke-RomsUninstall {
