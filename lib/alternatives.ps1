@@ -67,6 +67,12 @@ function Register-Alternative {
     )
 
     Write-Log "Registering alternative for '$CommandName' from package '$PackageId'..." "INFO"
+    
+    # Robustness: Force absolute path resolution for the provider target
+    if ($ExecutablePath -and -not [System.IO.Path]::IsPathRooted($ExecutablePath)) {
+        Write-Log "Warning: Registering relative executable path. Resolving to absolute..." "WARN"
+        $ExecutablePath = [System.IO.Path]::GetFullPath($ExecutablePath)
+    }
     Write-Log "Target executable: $ExecutablePath" "DEBUG"
 
     $data = Get-AlternativesData

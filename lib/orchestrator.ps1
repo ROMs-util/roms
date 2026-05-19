@@ -18,7 +18,8 @@ function Invoke-RomsInstall {
         # PHASE 1: Dependency Mapping
         $requiredPackages = @()
         if (Test-Path $Identifier) {
-            # Local file - mapping logic for local deps can be added here
+            # Robustness: Force absolute path for local file
+            $Identifier = [System.IO.Path]::GetFullPath($Identifier)
             $requiredPackages = @($Identifier)
         } else {
             $pkg = Get-RomsRegistryPackage -Name $Identifier
