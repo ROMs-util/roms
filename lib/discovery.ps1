@@ -10,14 +10,21 @@ function Search-Packages {
 
     $cacheFiles = Get-ChildItem -Path $global:CACHE_DIR -Filter "*.index.json"
     $allResults = @()
+    $sysArch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLower()
 
     foreach ($f in $cacheFiles) {
         try {
             $sourceName = $f.Name.Replace(".index.json", "")
             $data = Get-Content $f.FullName | ConvertFrom-Json
             
-            # Add Source property to every package
-            foreach ($pkg in $data) {
+            # Support Trinity v1.1.0 (nested packages) or legacy flat array
+            $pkgs = if ($data.packages) { $data.packages } else { $data }
+
+            foreach ($pkg in $pkgs) {
+                # Architecture Filtering (Industrial Strength Guardrail)
+                $pkgArch = if ($pkg.architecture) { $pkg.architecture.ToLower() } else { "all" }
+                if ($pkgArch -ne "all" -and $pkgArch -ne $sysArch) { continue }
+
                 $pkg | Add-Member -MemberType NoteProperty -Name "Source" -Value $sourceName -Force
                 
                 # Filter logic
