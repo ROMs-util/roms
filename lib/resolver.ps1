@@ -14,51 +14,55 @@ function Get-RomsDependencyList {
         [string[]]$CollectedList = @()
     )
 
-    # 1. Normalize Dependencies to an array of names
-    $depNames = @()
+    # 1. Normalize Dependencies to an array
+    $depIdentifiers = @()
     if ($Dependencies -is [System.Array]) {
-        $depNames = $Dependencies
+        $depIdentifiers = $Dependencies
     } elseif ($Dependencies.roms -is [System.Array]) {
-        $depNames = $Dependencies.roms
+        $depIdentifiers = $Dependencies.roms
     }
 
-    if ($depNames.Count -eq 0) {
+    if ($depIdentifiers.Count -eq 0) {
         return $CollectedList
     }
 
-    foreach ($depName in $depNames) {
-        # 2. Check if already installed (Industrial Strength: .NET Rule)
+    foreach ($depIdentifier in $depIdentifiers) {
+        # 2. Parse Identifier (e.g., "beta:^1.0.0" or just "beta")
+        $parts = $depIdentifier.Split(':')
+        $depName = $parts[0]
+        $constraint = if ($parts.Count -gt 1) { $parts[1] } else { "*" }
+
+        # 3. Check if already installed
         $metaPath = [System.IO.Path]::Combine($global:METADATA_DIR, "$depName.json")
         if ([System.IO.File]::Exists($metaPath)) {
+            # Future: Check if installed version satisfies constraint for "Upgrade" support
             continue
         }
 
-        # 3. Detect Circular Dependencies
+        # 4. Detect Circular Dependencies
         if ($ResolutionStack -contains $depName) {
             $path = ($ResolutionStack + $depName) -join " -> "
             Write-Log "CIRCULAR DEPENDENCY DETECTED: $path" "ERROR"
             throw "Abort: Circular dependency chain found."
         }
 
-        # 4. Skip if already collected for this run
+        # 5. Skip if already collected for this run
         if ($CollectedList -contains $depName) {
             continue
         }
 
-        # 5. Discover Sub-Dependencies (Recursion)
-        $subDeps = $null
-        $cacheFiles = Get-ChildItem -Path $global:CACHE_DIR -Filter "*.index.json"
-        foreach ($f in $cacheFiles) {
-            $data = Get-Content $f.FullName | ConvertFrom-Json
-            $pkg = $data | Where-Object { $_.name -eq $depName } | Select-Object -First 1
-            if ($pkg -and $pkg.dependencies) {
-                $subDeps = $pkg.dependencies
-                break
-            }
+        # 6. Find best satisfying version in registry
+        $pkg = Get-RomsRegistryPackage -Name $depName
+        if (!$pkg) { throw "Dependency '$depName' not found in registry." }
+
+        # 7. Industrial Strength: Verify Constraint
+        if ($constraint -ne "*" -and -not (Test-RomsVersionMatch -CurrentVersion $pkg.version -Constraint $constraint)) {
+            throw "Dependency conflict: '$depName' version '$($pkg.version)' does not satisfy constraint '$constraint'."
         }
 
-        if ($subDeps) {
-            $CollectedList = Get-RomsDependencyList -Dependencies $subDeps -ResolutionStack ($ResolutionStack + $depName) -CollectedList $CollectedList
+        # 8. Discover Sub-Dependencies (Recursion)
+        if ($pkg.dependencies) {
+            $CollectedList = Get-RomsDependencyList -Dependencies $pkg.dependencies -ResolutionStack ($ResolutionStack + $depName) -CollectedList $CollectedList
         }
 
         if (!($CollectedList -contains $depName)) {

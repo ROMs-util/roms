@@ -84,26 +84,46 @@ function Stage-Package {
         Copy-Item -Path $Identifier -Destination $stagedPath -Force
     } else {
         # Registry Download
-        $pkg = Get-RomsRegistryPackage -Name $Identifier
-        if (!$pkg) { throw "Dependency '$Identifier' is missing from registry index." }
+        # Handle identifier with version constraint (name:constraint)
+        $parts = $Identifier.Split(':')
+        $name = $parts[0]
+        
+        $pkg = Get-RomsRegistryPackage -Name $name
+        if (!$pkg) { throw "Dependency '$name' is missing from registry index." }
+
+        # Variable Injection (Industrial Strength Resolution)
+        $resolvedUrl = Get-RomsResolvedUrl -Template $pkg.downloadUrl -Package $pkg
+        if (!$resolvedUrl) { throw "Download URL could not be resolved for '$name'." }
 
         $stagedPath = Join-Path $StagingDir "$($pkg.name).rms"
         
-        Write-Log "Staging $($pkg.name)..." "INFO"
-        if ($pkg.downloadUrl.StartsWith("http")) {
-            Invoke-RestMethod -Uri $pkg.downloadUrl -OutFile $stagedPath
+        Write-Log "Staging $($pkg.name) (v$($pkg.version))..." "INFO"
+        if ($resolvedUrl.StartsWith("http")) {
+            Invoke-RestMethod -Uri $resolvedUrl -OutFile $stagedPath
         } else {
-            if (!(Test-Path $pkg.downloadUrl)) { throw "Download path for '$Identifier' is invalid: $($pkg.downloadUrl)" }
-            Copy-Item -Path $pkg.downloadUrl -Destination $stagedPath -Force
+            if (!(Test-Path $resolvedUrl)) { throw "Resolved download path for '$name' is invalid: $resolvedUrl" }
+            Copy-Item -Path $resolvedUrl -Destination $stagedPath -Force
         }
 
-        # Verify Hash
-        if ($pkg.sha256 -ne "SKIP") {
+        # Verify Integrity (Size & Hash)
+        # Industrial Strength: Mandatory verification if data is present in registry
+        if ($pkg.size -and $pkg.size -gt 0) {
+            $actualSize = (Get-Item $stagedPath).Length
+            if ($actualSize -ne $pkg.size) {
+                Remove-Item $stagedPath -Force
+                throw "Integrity check failed for '$name'. Size mismatch (Expected: $($pkg.size), Actual: $actualSize)."
+            }
+        }
+
+        if ($pkg.sha256 -and $pkg.sha256 -ne "UNAVAILABLE" -and $pkg.sha256 -ne "SKIP") {
             $actualHash = Get-RomsFileHash -FilePath $stagedPath
             if ($actualHash -ne $pkg.sha256.ToUpper()) {
                 Remove-Item $stagedPath -Force
-                throw "Integrity check failed for $Identifier. Hash mismatch."
+                throw "Integrity check failed for '$name'. Hash mismatch (Expected: $($pkg.sha256.ToUpper()), Actual: $actualHash)."
             }
+            # Standard: Store hash in session for engine metadata registration
+            $global:ROMs_STAGED_HASH = $actualHash
+            Write-Log "Verified integrity for $($pkg.name) (Hash: $($actualHash.Substring(0,8))...)" "SUCCESS"
         }
     }
     return $stagedPath
@@ -115,8 +135,17 @@ function Get-RomsRegistryPackage {
     $cacheFiles = Get-ChildItem -Path $global:CACHE_DIR -Filter "*.index.json"
     foreach ($f in $cacheFiles) {
         $data = Get-Content $f.FullName | ConvertFrom-Json
-        $pkg = $data | Where-Object { $_.name -eq $Name } | Select-Object -First 1
-        if ($pkg) { return $pkg }
+        # Support Trinity v1.1.0 (nested packages) or legacy flat array
+        $pkgs = if ($data.packages) { $data.packages } else { $data }
+        
+        $pkg = $pkgs | Where-Object { $_.name -eq $Name } | Select-Object -First 1
+        if ($pkg) { 
+            # Inject repo-level template if package lacks its own
+            if (!$pkg.downloadUrl -and $data.repo.url_template) {
+                $pkg | Add-Member -MemberType NoteProperty -Name "downloadUrl" -Value $data.repo.url_template -Force
+            }
+            return $pkg 
+        }
     }
     return $null
 }
