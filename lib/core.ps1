@@ -40,7 +40,18 @@ function Write-Log {
         Default   { Write-Host $logLine -ForegroundColor Gray }
     }
 
-    $logLine | Out-File -FilePath $global:MASTER_LOG -Append -Encoding utf8
+    # Industrial Strength: Handle File-Lock Contention
+    $retryCount = 0
+    $success = $false
+    while (-not $success -and $retryCount -lt 5) {
+        try {
+            $logLine | Out-File -FilePath $global:MASTER_LOG -Append -Encoding utf8 -ErrorAction Stop
+            $success = $true
+        } catch {
+            $retryCount++
+            Start-Sleep -Milliseconds 50
+        }
+    }
 }
 
 # ---------------------------------------------
