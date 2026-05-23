@@ -51,6 +51,10 @@ function Invoke-RomsInstall {
             # Call Engine (NoShim: Manager handles shims via Alternatives)
             & $enginePath install $localPath -yes:$global:AutoConfirm -noShim
             
+            if ($LASTEXITCODE -ne 0) {
+                throw "Engine (rmspkg) failed to install '$pkgName'. See engine logs for details."
+            }
+
             # Handle Alternatives Registration
             $latestMeta = Get-ChildItem $global:METADATA_DIR -Filter "*.json" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
             if ($latestMeta) {
@@ -140,8 +144,8 @@ function Get-RomsRegistryPackage {
         
         $pkg = $pkgs | Where-Object { $_.name -eq $Name } | Select-Object -First 1
         if ($pkg) { 
-            # Inject repo-level template if package lacks its own
-            if (!$pkg.downloadUrl -and $data.repo.url_template) {
+            # Inject repo-level template if package lacks its own (handle null or empty)
+            if ([string]::IsNullOrWhiteSpace($pkg.downloadUrl) -and $data.repo.url_template) {
                 $pkg | Add-Member -MemberType NoteProperty -Name "downloadUrl" -Value $data.repo.url_template -Force
             }
             return $pkg 
