@@ -137,3 +137,21 @@ function Get-RomsResolvedUrl {
     
     return $url
 }
+
+# ---------------------------------------------
+# ENGINE DISCOVERY (Industrial Strength)
+# ---------------------------------------------
+function Get-RomsEnginePath {
+    # 1. Deterministic Standard Root
+    if (Test-Path $global:ENGINE_SCRIPT) {
+        return $global:ENGINE_SCRIPT
+    }
+
+    # 2. Workspace Detection (Internal/Dev only - strictly if .git exists)
+    $devPath = Join-Path (Split-Path (Split-Path $PSScriptRoot)) "package_installer\rmspkg.ps1"
+    if ((Test-Path (Join-Path (Split-Path (Split-Path $PSScriptRoot)) ".git")) -and (Test-Path $devPath)) {
+        return $devPath
+    }
+
+    return $null
+}

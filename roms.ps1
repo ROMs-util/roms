@@ -42,6 +42,19 @@ if (-not $command -or $command -eq "help") {
 }
 
 # ---------------------------------------------
+# ENGINE INITIALIZATION (Self-Healing)
+# ---------------------------------------------
+$global:ResolvedEnginePath = Get-RomsEnginePath
+if (-not $global:ResolvedEnginePath) {
+    Initialize-RomsEngine
+    $global:ResolvedEnginePath = Get-RomsEnginePath
+    if (-not $global:ResolvedEnginePath) {
+        Write-Error "[FATAL] Standalone Engine could not be initialized."
+        exit 1
+    }
+}
+
+# ---------------------------------------------
 # COMMAND ROUTING
 # ---------------------------------------------
 # Resolve local paths early to handle elevation/context changes
