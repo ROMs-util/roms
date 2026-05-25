@@ -129,8 +129,13 @@ function Invoke-RomsInstall {
             Write-Log "Processing: $pkgName" "INFO"
             $localPath = $stagedFiles[$pkgName]
             
-            # Call Engine (NoShim: Manager handles shims via Alternatives)
-            & $enginePath install $localPath -yes:$global:AutoConfirm -noShim
+            # 3. Dynamic Flag Handshake (Honor User Intent)
+            $engineArgs = @("install", $localPath, "--no-shim")
+            if ($global:AutoConfirm) { $engineArgs += "--yes" }
+            if ($global:Verbose)     { $engineArgs += "--verbose" }
+
+            # Call Engine
+            & $enginePath @engineArgs
             
             if ($LASTEXITCODE -ne 0) {
                 throw "Engine (rmspkg) failed to install '$pkgName'. See engine logs for details."
