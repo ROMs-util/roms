@@ -9,7 +9,11 @@ $global:METADATA_DIR  = "$global:ROMS_ROOT\.metadata"
 $global:CACHE_DIR     = "$global:ROMS_ROOT\cache"
 $global:SOURCES_FILE  = "$global:ROMS_ROOT\sources.json"
 $global:ALTERNATIVES_FILE = "$global:ROMS_ROOT\alternatives.json"
-$global:OFFICIAL_REPO = "https://raw.githubusercontent.com/rrkroms/ROMs-util/main/index.json"
+$global:OFFICIAL_REPO = "https://raw.githubusercontent.com/ROMs-util/rms-atlas/main/index.json"
+# Standalone Engine Constants
+$global:ENGINE_DIR    = "$global:ROMS_ROOT\rmspkg"
+$global:ENGINE_SCRIPT = "$global:ENGINE_DIR\rmspkg.ps1"
+$global:RECOVERY_API  = "https://api.github.com/repos/ROMs-util/rmspkg/releases/latest"
 
 $global:TEMP_DIR      = "$global:ROMS_ROOT\temp"
 $global:LOG_DIR       = "$global:ROMS_ROOT\logs"
