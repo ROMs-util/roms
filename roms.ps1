@@ -11,15 +11,16 @@ if (-not (Test-Path $libPath)) {
     exit 1
 }
 
-# Load Modules in safe Foundation-First order
+# Load Modules in safe Foundation-First order (Modularity Standard)
 . (Join-Path $libPath "core.ps1")         # Foundations
 . (Join-Path $libPath "util.ps1")         # Primitives
+. (Join-Path $libPath "bootstrap.ps1")    # Engine Discovery & Self-Healing
 . (Join-Path $libPath "help.ps1")         # UI
 . (Join-Path $libPath "sync.ps1")         # Registry
 . (Join-Path $libPath "discovery.ps1")    # Search
 . (Join-Path $libPath "resolver.ps1")     # Dependencies
 . (Join-Path $libPath "alternatives.ps1") # Environment
-. (Join-Path $libPath "orchestrator.ps1") # Brain (Loaded last)
+. (Join-Path $libPath "orchestrator.ps1") # Orchestration (Loaded last)
 
 # ---------------------------------------------
 # ARGUMENT PARSING
