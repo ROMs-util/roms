@@ -1,6 +1,53 @@
 # bootstrap.ps1 - Standalone Engine Discovery and Self-Healing logic
 
 # ---------------------------------------------
+# ENGINE INTEGRITY (Self-Healing Watchdog)
+# ---------------------------------------------
+function Test-RomsEngineIntegrity {
+    $enginePath = Get-RomsEnginePath
+    if (-not $enginePath) { return $false }
+
+    # Workspace/Dev detection (Skip strict manifest check if in a Git repo)
+    if ($enginePath -match "package_installer\\rmspkg.ps1") {
+        Write-Log "Development Workspace detected. Skipping strict manifest check." "DEBUG"
+        return $true
+    }
+
+    try {
+        # 1. Metadata Verification (Source of Truth)
+        $metadataPath = Join-Path $global:METADATA_DIR "rmspkg.json"
+        if (-not (Test-Path $metadataPath)) {
+            Write-Log "Standalone Engine metadata is missing. Integrity compromised." "WARN"
+            return $false
+        }
+
+        # 2. Manifest Verification (Recursive File Check)
+        $metadata = Get-Content $metadataPath -Raw | ConvertFrom-Json
+        $engineRoot = $global:ENGINE_DIR
+        
+        foreach ($fileRelPath in $metadata.files) {
+            $fileAbsPath = Join-Path $engineRoot $fileRelPath
+            if (-not (Test-Path $fileAbsPath)) {
+                Write-Log "Standalone Engine integrity failure: Missing file [$fileRelPath]" "WARN"
+                return $false
+            }
+        }
+
+        # 3. Header Signature Check (Main Entry Point)
+        $header = Get-Content $enginePath -TotalCount 1 -ErrorAction Stop
+        if ($header -notlike "# rmspkg.ps1 - The ROMs-util Standalone Engine*") {
+            Write-Log "Standalone Engine binary has an invalid header signature." "WARN"
+            return $false
+        }
+
+        return $true
+    } catch {
+        Write-Log "Integrity check error: $($_.Exception.Message)" "DEBUG"
+        return $false
+    }
+}
+
+# ---------------------------------------------
 # ENGINE DISCOVERY (Industrial Strength)
 # ---------------------------------------------
 function Get-RomsEnginePath {
@@ -22,7 +69,12 @@ function Get-RomsEnginePath {
 # SELF-HEALING BOOTSTRAP (Hybrid Recovery)
 # ---------------------------------------------
 function Initialize-RomsEngine {
-    Write-Log "Standalone Engine missing. Initiating self-healing bootstrap..." "WARN"
+    $path = Get-RomsEnginePath
+    if ($path) {
+        Write-Log "Standalone Engine integrity failure detected. Initiating automated repair..." "WARN"
+    } else {
+        Write-Log "Standalone Engine missing. Initiating self-healing bootstrap..." "WARN"
+    }
 
     $stagedEngine = Join-Path $global:TEMP_DIR "rmspkg_bootstrap.rms"
     if (-not (Test-Path $global:TEMP_DIR)) { New-Item -ItemType Directory -Path $global:TEMP_DIR -Force | Out-Null }
