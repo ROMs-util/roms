@@ -46,15 +46,14 @@ if (-not $command -or $command -eq "help") {
 # ---------------------------------------------
 # ENGINE INITIALIZATION (Self-Healing)
 # ---------------------------------------------
-$global:ResolvedEnginePath = Get-RomsEnginePath
-if (-not $global:ResolvedEnginePath) {
+if (-not (Test-RomsEngineIntegrity)) {
     Initialize-RomsEngine
-    $global:ResolvedEnginePath = Get-RomsEnginePath
-    if (-not $global:ResolvedEnginePath) {
-        Write-Error "[FATAL] Standalone Engine could not be initialized."
+    if (-not (Test-RomsEngineIntegrity)) {
+        Write-Error "[FATAL] Standalone Engine could not be initialized or is corrupted."
         exit 1
     }
 }
+$global:ResolvedEnginePath = Get-RomsEnginePath
 
 # ---------------------------------------------
 # COMMAND ROUTING
