@@ -98,9 +98,12 @@ function Register-Alternative {
 
     # 3. Auto-Selection logic
     if ($entry.mode -eq "auto") {
-        $best = $entry.providers | Sort-Object priority -Descending | Select-Object -First 1
-        if ($best.package -eq $PackageId -or -not $entry.selected) {
-            $entry.selected = $best.package
+        # Industrial Strength: Only pivot if strictly better or first provider
+        $currentProvider = if ($entry.selected) { $entry.providers | Where-Object { $_.package -eq $entry.selected } | Select-Object -First 1 } else { $null }
+        
+        if (-not $currentProvider -or $Priority -gt $currentProvider.priority) {
+            Write-Log "Promoting '$PackageId' as active provider for '$CommandName' (Priority: $Priority)." "INFO"
+            $entry.selected = $PackageId
             Manage-Shim -CommandName $CommandName -ExecutablePath $ExecutablePath
         }
     }
