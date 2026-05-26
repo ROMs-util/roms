@@ -36,6 +36,7 @@ function Initialize-RomsEngine {
             $url = Get-RomsResolvedUrl -Template $pkg.downloadUrl -Package $pkg
             Write-Log "Downloading engine from registry: $url" "INFO"
             Invoke-RestMethod -Uri $url -OutFile $stagedEngine
+            Write-Log "[SUCCESS] Standalone Engine sourced from official cloud registry." "SUCCESS"
             $success = $true
         }
     } catch {
@@ -59,12 +60,14 @@ function Initialize-RomsEngine {
             if ($asset) {
                 Write-Log "Found recovery asset: $($asset.name)" "INFO"
                 Invoke-RestMethod -Uri $asset.browser_download_url -OutFile $stagedEngine
+                Write-Log "[SUCCESS] Standalone Engine sourced from GitHub Recovery API." "SUCCESS"
                 $success = $true
             }
         } catch {
             Write-Log "GitHub Recovery failed: $($_.Exception.Message)" "ERROR"
         }
     }
+
 
     if (-not $success) {
         throw "Critical Failure: Ecosystem cannot initialize without the Standalone Engine. All bootstrap sources exhausted."
