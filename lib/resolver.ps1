@@ -18,6 +18,8 @@ function Get-RomsDependencyList {
     $depIdentifiers = @()
     if ($Dependencies -is [System.Array]) {
         $depIdentifiers = $Dependencies
+    } elseif ($Dependencies.packages -is [System.Array]) {
+        $depIdentifiers = $Dependencies.packages
     } elseif ($Dependencies.roms -is [System.Array]) {
         $depIdentifiers = $Dependencies.roms
     }
