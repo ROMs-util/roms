@@ -48,16 +48,7 @@ function Invoke-RomsInstall {
             $localPath = $stagedFiles[$pkgName]
             
             # 3. Dynamic Flag Handshake (Honor User Intent)
-            $engineArgs = @("install", $localPath, "--no-shim")
-            if ($global:AutoConfirm) { $engineArgs += "--yes" }
-            if ($global:Verbose)     { $engineArgs += "--verbose" }
-
-            # Call Engine
-            & $enginePath @engineArgs
-            
-            if ($LASTEXITCODE -ne 0) {
-                throw "Engine (rmspkg) failed to install '$pkgName'. See engine logs for details."
-            }
+            Invoke-EngineCommand -Command "install" -Target $localPath -Yes:$global:AutoConfirm -ShowVerbose:$global:Verbose -NoShim
 
             # Handle Alternatives Registration
             $latestMeta = Get-ChildItem $global:METADATA_DIR -Filter "*.json" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -175,12 +166,8 @@ function Invoke-RomsUninstall {
     $enginePath = $global:ResolvedEnginePath
 
     # 3. Dynamic Flag Handshake (Honor User Intent)
-    $engineArgs = @("uninstall", $Name)
-    if ($global:AutoConfirm) { $engineArgs += "--yes" }
-    if ($global:Verbose)     { $engineArgs += "--verbose" }
-
     Write-Log "Calling engine (rmspkg) to uninstall: $Name" "INFO"
-    & $enginePath @engineArgs
+    Invoke-EngineCommand -Command "uninstall" -Target $Name -Yes:$global:AutoConfirm -ShowVerbose:$global:Verbose
 
     # 4. Auto-Pivot: Handle alternatives unregistration
     Unregister-Alternative -Name $Name -PackageId $packageId
