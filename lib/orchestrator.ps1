@@ -55,7 +55,10 @@ function Invoke-RomsInstall {
             if ($latestMeta) {
                 $meta = Get-Content $latestMeta.FullName -Raw | ConvertFrom-Json
                 $packageId = if ($meta.version) { "$($meta.name)-$($meta.version)" } else { $meta.name }
-                Register-Alternative -CommandName $meta.commandName -PackageId $packageId -ExecutablePath $meta.executable
+                
+                # Industrial Strength: Ensure priority is passed to the Alternatives system
+                $priority = if ($null -ne $meta.priority) { [int]$meta.priority } else { 100 }
+                Register-Alternative -CommandName $meta.commandName -PackageId $packageId -ExecutablePath $meta.executable -Priority $priority
             }
         }
         
