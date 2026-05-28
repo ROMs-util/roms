@@ -229,7 +229,7 @@ function Invoke-RomsUninstall {
 
     # 3. Dynamic Flag Handshake (Honor User Intent)
     Write-Log "Calling engine (rmspkg) to uninstall: $Name" "INFO"
-    Invoke-EngineCommand -Command "uninstall" -Target $Name -Yes:$global:AutoConfirm -ShowVerbose:$global:Verbose
+    $exitCode = Invoke-EngineCommand -Command "uninstall" -Target $Name -Yes:$global:AutoConfirm -ShowVerbose:$global:Verbose
 
     # 4. Auto-Pivot: Handle alternatives unregistration
     Unregister-Alternative -Name $Name -PackageId $packageId
