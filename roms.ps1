@@ -71,8 +71,23 @@ if ($command -eq "install" -and $subArgs[0]) {
         [Console]::Error.WriteLine("[ERROR] Detected mangled version constraint for '$pkgName'.")
         [Console]::Error.WriteLine("[WARN] CMD likely intercepted a redirection character (>, <). Wrap constraints in quotes: roms install `"${pkgName}:>=1.0.0`"")
         
-        # Note: We cannot delete the redirection file here because CMD holds a lock on it until this process exits.
-        # However, the user is now clearly informed of the error.
+        # Find potential redirection file (0-byte, created in last 5 seconds)
+        $potentialFile = Get-ChildItem -File | 
+            Where-Object { $_.Length -eq 0 -and $_.LastWriteTime -gt (Get-Date).AddSeconds(-5) } | 
+            Sort-Object LastWriteTime -Descending | 
+            Select-Object -First 1
+
+        if ($null -ne $potentialFile) {
+            [Console]::Error.Write("[WARN] Accidental redirection created file: '$($potentialFile.Name)'. Delete it? [Y/n]: ")
+            $choice = [Console]::In.ReadLine()
+            if ($choice -match '^[Yy]') {
+                # Launch decoupled background cleanup (CMD holds a lock until this process exits)
+                $cleanupCmd = "Start-Sleep -s 1; if (Test-Path '$($potentialFile.FullName)') { Remove-Item '$($potentialFile.FullName)' -Force }"
+                Start-Process powershell -WindowStyle Hidden -ArgumentList "-ExecutionPolicy Bypass -Command `"$cleanupCmd`""
+                [Console]::Error.WriteLine("[INFO] Background cleanup scheduled for '$($potentialFile.Name)'.")
+            }
+        }
+        
         exit 1
     }
     # --- END CMD COMPATIBILITY GUARDRAIL ---
