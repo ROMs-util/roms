@@ -4,7 +4,7 @@
 # ---------------------------------------------
 # BOOTSTRAP LIBRARY (Industrial Strength)
 # ---------------------------------------------
-$global:EntryScriptPath = $MyInvocation.MyCommand.Definition
+$global:EntryScriptPath = $PSCommandPath
 $libPath = Join-Path $PSScriptRoot "lib"
 if (-not (Test-Path $libPath)) {
     Write-Error "[FATAL] Library folder not found at $libPath"
