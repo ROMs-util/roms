@@ -14,6 +14,7 @@ function Invoke-RomsInstall {
     Write-Log "Starting atomic installation for: $Identifier" "INFO"
 
     try {
+        $successfullyInstalled = @()
         # PHASE 1: Dependency Mapping
         $requiredPackages = @()
         if (Test-Path $Identifier) {
@@ -56,6 +57,11 @@ function Invoke-RomsInstall {
             # 3. Dynamic Flag Handshake (Honor User Intent)
             Invoke-EngineCommand -Command "install" -Target $localPath -Yes:$global:AutoConfirm -ShowVerbose:$global:Verbose -NoShim
 
+            # Track for rollback (Strip constraints or handle local paths)
+            $cleanName = $pkgName.Split(':')[0]
+            if (Test-Path $pkgName) { $cleanName = [System.IO.Path]::GetFileNameWithoutExtension($pkgName) }
+            $successfullyInstalled += $cleanName
+
             # Handle Alternatives Registration
             $latestMeta = Get-ChildItem $global:METADATA_DIR -Filter "*.json" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
             if ($latestMeta) {
@@ -72,6 +78,19 @@ function Invoke-RomsInstall {
 
     } catch {
         Write-Log "CRITICAL FAILURE: $($_.Exception.Message)" "ERROR"
+
+        # PHASE 4: Transactional Rollback
+        if ($successfullyInstalled.Count -gt 0) {
+            Write-Log "Initiating transactional rollback for $($successfullyInstalled.Count) packages..." "WARN"
+            foreach ($pkgToRollback in ($successfullyInstalled | Select-Object -Unique)) {
+                try {
+                    Invoke-RomsUninstall -Name $pkgToRollback
+                } catch {
+                    Write-Log "Rollback failed for ${pkgToRollback}: $($_.Exception.Message)" "ERROR"
+                }
+            }
+        }
+
         Write-Log "System remains clean. No system modifications were committed." "WARN"
     } finally {
         # Cleanup Staging
