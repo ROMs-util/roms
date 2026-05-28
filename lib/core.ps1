@@ -21,6 +21,13 @@ $global:LOG_DIR       = "$global:ROMS_ROOT\logs"
 $global:LOCK_FILE     = "$global:TEMP_DIR\roms.lock"
 $global:MASTER_LOG    = "$global:LOG_DIR\roms.log"
 
+# Industrial Strength: Multi-Version Architecture Detection
+$global:Architecture = if ($PSVersionTable.PSVersion.Major -ge 6) {
+    [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+} else {
+    $env:PROCESSOR_ARCHITECTURE
+}
+
 # ---------------------------------------------
 # LOGGING SYSTEM
 # ---------------------------------------------

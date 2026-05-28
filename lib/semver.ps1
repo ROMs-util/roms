@@ -1,0 +1,137 @@
+# semver.ps1 - Industrial Strength SemVer 2.0 Engine for ROMs-util
+# Follows MODULARITY_STANDARDS.md and DESIGN_STANDARDS.md
+
+# ---------------------------------------------
+# VERSION PARSING (The .NET Rule)
+# ---------------------------------------------
+function Get-RomsSemVerParts {
+    param([Parameter(Mandatory=$true)][string]$Version)
+
+    # SemVer 2.0 Regex: Major.Minor.Patch[-PreRelease][+BuildMetadata]
+    $regex = "^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?:-(?<pre>[0-9A-Za-z.-]+))?(?:\+(?<build>[0-9A-Za-z.-]+))?$"
+    
+    if ($Version -match $regex) {
+        return [PSCustomObject]@{
+            Major = [int]$Matches['major']
+            Minor = [int]$Matches['minor']
+            Patch = [int]$Matches['patch']
+            Pre   = $Matches['pre']
+            Build = $Matches['build']
+            Original = $Version
+        }
+    }
+    return $null
+}
+
+# ---------------------------------------------
+# VERSION COMPARISON (Industrial Strength)
+# ---------------------------------------------
+function Compare-RomsVersions {
+    param(
+        [Parameter(Mandatory=$true)][string]$v1,
+        [Parameter(Mandatory=$true)][string]$v2
+    )
+
+    $p1 = Get-RomsSemVerParts -Version $v1
+    $p2 = Get-RomsSemVerParts -Version $v2
+
+    # Industrial Strength: Return unique sentinel (-2) for unparseable versions 
+    # to prevent false-positive equality (0) in the matcher.
+    if (!$p1 -or !$p2) { return -2 }
+
+    # 1. Compare Numeric Parts (Major.Minor.Patch)
+    if ($p1.Major -ne $p2.Major) { return $p1.Major.CompareTo($p2.Major) }
+    if ($p1.Minor -ne $p2.Minor) { return $p1.Minor.CompareTo($p2.Minor) }
+    if ($p1.Patch -ne $p2.Patch) { return $p1.Patch.CompareTo($p2.Patch) }
+
+    # 2. Pre-release Precedence (Stable > Pre-release)
+    if ($null -eq $p1.Pre -and $null -ne $p2.Pre) { return 1 }
+    if ($null -ne $p1.Pre -and $null -eq $p2.Pre) { return -1 }
+    if ($null -eq $p1.Pre -and $null -eq $p2.Pre) { return 0 }
+
+    # 3. Compare Pre-release Segments
+    $s1 = $p1.Pre.Split('.')
+    $s2 = $p2.Pre.Split('.')
+    $max = [Math]::Max($s1.Count, $s2.Count)
+
+    for ($i = 0; $i -lt $max; $i++) {
+        if ($i -ge $s1.Count) { return -1 }
+        if ($i -ge $s2.Count) { return 1 }
+
+        $part1 = $s1[$i]
+        $part2 = $s2[$i]
+
+        $isNum1 = $part1 -match "^\d+$"
+        $isNum2 = $part2 -match "^\d+$"
+
+        if ($isNum1 -and $isNum2) {
+            $n1 = [int]$part1
+            $n2 = [int]$part2
+            if ($n1 -ne $n2) { return $n1.CompareTo($n2) }
+        } else {
+            $cmp = [string]::Compare($part1, $part2, [System.StringComparison]::Ordinal)
+            if ($cmp -ne 0) { return $cmp }
+        }
+    }
+
+    return 0
+}
+
+# ---------------------------------------------
+# CONSTRAINT MATCHING (The Resolver)
+# ---------------------------------------------
+function Test-RomsVersionMatch {
+    param(
+        [Parameter(Mandatory=$true)][string]$CurrentVersion,
+        [Parameter(Mandatory=$true)][string]$Constraint
+    )
+
+    if ($Constraint -eq "*" -or $Constraint -eq "latest") { return $true }
+
+    # Normalize Constraint
+    if ($Constraint -match "^(\^|~|>=|>|<=|<)?\s*(.*)$") {
+        $op = $Matches[1]
+        $targetStr = $Matches[2]
+        
+        $v = Get-RomsSemVerParts -Version $CurrentVersion
+        $t = Get-RomsSemVerParts -Version $targetStr
+
+        if (!$v) { return $false }
+        
+        # Pre-release Guardrail: If constraint doesn't have a pre-release tag, 
+        # it MUST NOT match a pre-release version.
+        if ($v.Pre -and (!$t -or !$t.Pre)) {
+            return $false
+        }
+
+        # Exact Match (no operator)
+        if (!$op) { return (Compare-RomsVersions -v1 $CurrentVersion -v2 $targetStr) -eq 0 }
+
+        # Caret (^) - Compatibility (Compatible with Major)
+        if ($op -eq "^") {
+            if (!$t) { return $false }
+            # Same major, and current >= target
+            if ($v.Major -ne $t.Major) { return $false }
+            return (Compare-RomsVersions -v1 $CurrentVersion -v2 $targetStr) -ge 0
+        }
+
+        # Tilde (~) - Patch (Compatible with Minor)
+        if ($op -eq "~") {
+            if (!$t) { return $false }
+            # Same major and minor, and current >= target
+            if ($v.Major -ne $t.Major -or $v.Minor -ne $t.Minor) { return $false }
+            return (Compare-RomsVersions -v1 $CurrentVersion -v2 $targetStr) -ge 0
+        }
+
+        # Range Operators
+        $cmp = Compare-RomsVersions -v1 $CurrentVersion -v2 $targetStr
+        switch ($op) {
+            ">=" { return $cmp -ge 0 }
+            ">"  { return $cmp -gt 0 }
+            "<=" { return $cmp -le 0 }
+            "<"  { return $cmp -lt 0 }
+        }
+    }
+
+    return $false
+}
