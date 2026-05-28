@@ -21,14 +21,20 @@ function Invoke-RomsInstall {
             $Identifier = [System.IO.Path]::GetFullPath($Identifier)
             $requiredPackages = @($Identifier)
         } else {
-            $pkg = Get-RomsRegistryPackage -Name $Identifier
-            if (!$pkg) { throw "Abort: Package '$Identifier' not found in registry." }
+            # Handle identifier with version constraint (name:constraint)
+            $parts = $Identifier.Split(':')
+            $name = $parts[0]
+            $constraint = if ($parts.Count -gt 1) { $parts[1] } else { "*" }
+
+            $pkg = Get-RomsRegistryPackage -Name $name -Constraint $constraint
+            if (!$pkg) { throw "Abort: Package '$name' (Constraint: $constraint) not found in registry." }
             
             $missingDeps = @()
             if ($pkg.dependencies) {
                 $missingDeps = Get-RomsDependencyList -Dependencies $pkg.dependencies
             }
-            $requiredPackages = $missingDeps + $Identifier
+            # Force array concatenation to prevent string mangling
+            $requiredPackages = @() + $missingDeps + $Identifier
         }
 
         Write-Log "Mapping dependency tree: $($requiredPackages -join ', ')" "INFO"
@@ -89,9 +95,10 @@ function Stage-Package {
         # Handle identifier with version constraint (name:constraint)
         $parts = $Identifier.Split(':')
         $name = $parts[0]
+        $constraint = if ($parts.Count -gt 1) { $parts[1] } else { "*" }
         
-        $pkg = Get-RomsRegistryPackage -Name $name
-        if (!$pkg) { throw "Dependency '$name' is missing from registry index." }
+        $pkg = Get-RomsRegistryPackage -Name $name -Constraint $constraint
+        if (!$pkg) { throw "Dependency '$name' (Constraint: $constraint) is missing from registry index." }
 
         # Variable Injection (Industrial Strength Resolution)
         $resolvedUrl = Get-RomsResolvedUrl -Template $pkg.downloadUrl -Package $pkg
@@ -133,23 +140,56 @@ function Stage-Package {
 
 # Helper to search registry indexes
 function Get-RomsRegistryPackage {
-    param($Name)
+    param(
+        [Parameter(Mandatory=$true)][string]$Name,
+        [Parameter(Mandatory=$false)][string]$Constraint = "*"
+    )
+    
     $cacheFiles = Get-ChildItem -Path $global:CACHE_DIR -Filter "*.index.json"
+    $candidates = @()
+    
+    # Industrial Strength: Use ecosystem constant instead of volatile .NET class
+    $sysArch = $global:Architecture.ToLower()
+
     foreach ($f in $cacheFiles) {
-        $data = Get-Content $f.FullName | ConvertFrom-Json
+        $data = Get-Content $f.FullName -Raw | ConvertFrom-Json
+        if (!$data) { continue }
+
         # Support Trinity v1.1.0 (nested packages) or legacy flat array
-        $pkgs = if ($data.packages) { $data.packages } else { $data }
+        $pkgs = if ($null -ne $data.packages) { $data.packages } else { $data }
         
-        $pkg = $pkgs | Where-Object { $_.name -eq $Name } | Select-Object -First 1
-        if ($pkg) { 
-            # Inject repo-level template if package lacks its own (handle null or empty)
-            if ([string]::IsNullOrWhiteSpace($pkg.downloadUrl) -and $data.repo.url_template) {
+        if ($null -eq $pkgs -or $pkgs.Count -eq 0) { continue }
+
+        $matches = $pkgs | Where-Object { $_.name -eq $Name }
+        foreach ($pkg in $matches) {
+            # Architecture Filtering
+            $pkgArch = if ($pkg.architecture) { $pkg.architecture.ToLower() } else { "all" }
+            if ($pkgArch -ne "all" -and $pkgArch -ne $sysArch) { continue }
+
+            # Inject repo-level template if package lacks its own
+            # Guard: data.repo might be null in legacy flat registries
+            if ([string]::IsNullOrWhiteSpace($pkg.downloadUrl) -and $null -ne $data.repo -and $data.repo.url_template) {
                 $pkg | Add-Member -MemberType NoteProperty -Name "downloadUrl" -Value $data.repo.url_template -Force
             }
-            return $pkg 
+
+            # Check if satisfies constraint
+            if (Test-RomsVersionMatch -CurrentVersion $pkg.version -Constraint $Constraint) {
+                $candidates += $pkg
+            }
         }
     }
-    return $null
+
+    if ($candidates.Count -eq 0) { return $null }
+
+    # Sort Candidates (Highest Version First)
+    $best = $candidates[0]
+    foreach ($c in $candidates) {
+        if ((Compare-RomsVersions -v1 $c.version -v2 $best.version) -gt 0) {
+            $best = $c
+        }
+    }
+
+    return $best
 }
 
 function Invoke-RomsUninstall {

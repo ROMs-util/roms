@@ -37,7 +37,6 @@ function Get-RomsDependencyList {
         # 3. Check if already installed
         $metaPath = [System.IO.Path]::Combine($global:METADATA_DIR, "$depName.json")
         if ([System.IO.File]::Exists($metaPath)) {
-            # Future: Check if installed version satisfies constraint for "Upgrade" support
             continue
         }
 
@@ -49,27 +48,26 @@ function Get-RomsDependencyList {
         }
 
         # 5. Skip if already collected for this run
-        if ($CollectedList -contains $depName) {
-            continue
+        $alreadyCollected = $false
+        foreach ($item in $CollectedList) {
+            if ($item -eq $depName -or $item.StartsWith("${depName}:")) {
+                $alreadyCollected = $true
+                break
+            }
         }
+        if ($alreadyCollected) { continue }
 
         # 6. Find best satisfying version in registry
-        $pkg = Get-RomsRegistryPackage -Name $depName
-        if (!$pkg) { throw "Dependency '$depName' not found in registry." }
+        $pkg = Get-RomsRegistryPackage -Name $depName -Constraint $constraint
+        if (!$pkg) { throw "Dependency '$depName' (Constraint: $constraint) not found in registry." }
 
-        # 7. Industrial Strength: Verify Constraint
-        if ($constraint -ne "*" -and -not (Test-RomsVersionMatch -CurrentVersion $pkg.version -Constraint $constraint)) {
-            throw "Dependency conflict: '$depName' version '$($pkg.version)' does not satisfy constraint '$constraint'."
-        }
-
-        # 8. Discover Sub-Dependencies (Recursion)
+        # 7. Discover Sub-Dependencies (Recursion)
         if ($pkg.dependencies) {
             $CollectedList = Get-RomsDependencyList -Dependencies $pkg.dependencies -ResolutionStack ($ResolutionStack + $depName) -CollectedList $CollectedList
         }
 
-        if (!($CollectedList -contains $depName)) {
-            $CollectedList += $depName
-        }
+        # 8. Add specific versioned identifier to the list
+        $CollectedList += "${depName}:$($pkg.version)"
     }
 
     return $CollectedList

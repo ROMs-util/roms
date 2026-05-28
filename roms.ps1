@@ -14,6 +14,7 @@ if (-not (Test-Path $libPath)) {
 # Load Modules in safe Foundation-First order (Modularity Standard)
 . (Join-Path $libPath "core.ps1")         # Foundations
 . (Join-Path $libPath "util.ps1")         # Primitives
+. (Join-Path $libPath "semver.ps1")       # SemVer 2.0 Engine
 . (Join-Path $libPath "bootstrap.ps1")    # Engine Discovery & Self-Healing
 . (Join-Path $libPath "executor.ps1")     # Command Execution (rmspkg)
 . (Join-Path $libPath "help.ps1")         # UI
