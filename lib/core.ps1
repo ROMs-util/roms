@@ -109,7 +109,9 @@ function Confirm-RomsElevation {
         Write-Log "Elevation required for system modification. Requesting Administrator privileges..." "INFO"
         
         $scriptPath = $global:EntryScriptPath
-        $escapedArgs = $global:OriginalArgs | ForEach-Object { if ($_ -match ' ') { "`"$_`"" } else { $_ } }
+        $escapedArgs = $global:OriginalArgs | ForEach-Object { 
+            if ($_ -match '[ \^><~=:]') { "`"$_`"" } else { $_ } 
+        }
         $joinedArgs = $escapedArgs -join " "
         
         $powershellCommand = "& '$scriptPath' $joinedArgs"
