@@ -60,11 +60,29 @@ $global:ResolvedEnginePath = Get-RomsEnginePath
 # COMMAND ROUTING
 # ---------------------------------------------
 # Resolve local paths early to handle elevation/context changes
-if ($command -eq "install" -and $subArgs[0] -and (Test-Path $subArgs[0] -PathType Leaf)) {
-    $absolutePath = (Resolve-Path $subArgs[0]).Path
-    $subArgs[0] = $absolutePath
-    # Update OriginalArgs so the relaunch uses the absolute path
-    $global:OriginalArgs = @($command) + $subArgs
+if ($command -eq "install" -and $subArgs[0]) {
+    # --- CMD COMPATIBILITY GUARDRAIL (REMOVABLE IF RUNNING NATIVE PS1) ---
+    # Detect if CMD mangled the command by interpreting '>' as redirection
+    # When redirected, CMD strips everything from '>' onwards, leaving only the colon.
+    if ($subArgs[0].EndsWith(":")) {
+        $pkgName = $subArgs[0].TrimEnd(':')
+        
+        # Industrial Strength: Write to Stderr so the message is visible even if Stdout is redirected to a file
+        [Console]::Error.WriteLine("[ERROR] Detected mangled version constraint for '$pkgName'.")
+        [Console]::Error.WriteLine("[WARN] CMD likely intercepted a redirection character (>, <). Wrap constraints in quotes: roms install `"${pkgName}:>=1.0.0`"")
+        
+        # Note: We cannot delete the redirection file here because CMD holds a lock on it until this process exits.
+        # However, the user is now clearly informed of the error.
+        exit 1
+    }
+    # --- END CMD COMPATIBILITY GUARDRAIL ---
+
+    if (Test-Path $subArgs[0] -PathType Leaf) {
+        $absolutePath = (Resolve-Path $subArgs[0]).Path
+        $subArgs[0] = $absolutePath
+        # Update OriginalArgs so the relaunch uses the absolute path
+        $global:OriginalArgs = @($command) + $subArgs
+    }
 }
 
 # Start Transaction for modifying commands
@@ -85,7 +103,11 @@ try {
         }
         "uninstall" { 
             if (-not $subArgs[0]) { Write-Log "Package name required." "ERROR"; break }
-            Invoke-RomsUninstall -Name $subArgs[0] 
+            foreach ($pkgName in $subArgs) {
+                # Skip flags like -y or -v
+                if ($pkgName.StartsWith("-")) { continue }
+                Invoke-RomsUninstall -Name $pkgName
+            }
         }
         Default     { 
             Write-Log "Unknown command: $command" "ERROR"
