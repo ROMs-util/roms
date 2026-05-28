@@ -29,8 +29,8 @@ function Manage-Shim {
     $shimPath = Join-Path $global:BIN_DIR "$CommandName.bat"
 
     if ($Remove) {
+        Write-Log "Removing shim: $CommandName" "INFO"
         if (Test-Path $shimPath) {
-            Write-Log "Removing shim: $CommandName" "INFO"
             [System.IO.File]::Delete($shimPath)
         }
         return
