@@ -4,9 +4,19 @@ function Invoke-RomsInstall {
     param([string]$Identifier)
 
     # 1. Setup Staging Environment
-    $stagingDir = Join-Path $global:TEMP_DIR "staging"
-    if (Test-Path $stagingDir) { Remove-Item $stagingDir -Recurse -Force | Out-Null }
+    $stagingDir = Join-Path $global:ROMs_TEMP "staging"
+    if (Test-Path $stagingDir) { 
+        Write-Log "Purging existing staging directory: $stagingDir" "TRACE"
+        # File-by-File Physical Truth: Iterate and log each file deletion
+        Get-ChildItem -Path $stagingDir -Recurse -File | ForEach-Object {
+            Write-Log "Deleting staged file: $($_.FullName)" "TRACE"
+            Remove-Item $_.FullName -Force
+        }
+        # Finally remove the empty folder structure
+        Remove-Item $stagingDir -Recurse -Force | Out-Null 
+    }
     New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
+    if (Test-Path $stagingDir) { Write-Log "Created staging directory: $stagingDir" "TRACE" }
 
     # 2. Resolve Engine Path
     $enginePath = $global:ResolvedEnginePath
@@ -21,6 +31,7 @@ function Invoke-RomsInstall {
             # Robustness: Force absolute path for local file
             $Identifier = [System.IO.Path]::GetFullPath($Identifier)
             $requiredPackages = @($Identifier)
+            Write-Log "Local artifact detected: $Identifier" "DEBUG"
         } else {
             # Handle identifier with version constraint (name:constraint)
             $parts = $Identifier.Split(':')
@@ -33,18 +44,24 @@ function Invoke-RomsInstall {
             $missingDeps = @()
             if ($pkg.dependencies) {
                 $missingDeps = Get-RomsDependencyList -Dependencies $pkg.dependencies
+                if ($missingDeps) {
+                    Write-Log "Resolved dependencies: $($missingDeps -join ', ')" "DEBUG"
+                }
             }
             # Force array concatenation to prevent string mangling
             $requiredPackages = @() + $missingDeps + $Identifier
         }
 
-        Write-Log "Mapping dependency tree: $($requiredPackages -join ', ')" "INFO"
+        if ($requiredPackages) {
+            Write-Log "Mapping dependency tree: $($requiredPackages -join ', ')" "INFO"
+        }
 
         # PHASE 2: Acquisition (Download All to Staging)
         $stagedFiles = @{} # Map of package name -> staged path
         foreach ($pkgName in $requiredPackages) {
             $stagedPath = Stage-Package -Identifier $pkgName -StagingDir $stagingDir
             $stagedFiles[$pkgName] = $stagedPath
+            if (Test-Path $stagedPath) { Write-Log "Staged artifact verified: $(Split-Path $stagedPath -Leaf)" "TRACE" }
         }
 
         Write-Log "Acquisition complete. All required files staged and verified." "SUCCESS"
@@ -55,7 +72,7 @@ function Invoke-RomsInstall {
             $localPath = $stagedFiles[$pkgName]
             
             # 3. Dynamic Flag Handshake (Honor User Intent)
-            Invoke-EngineCommand -Command "install" -Target $localPath -Yes:$global:AutoConfirm -ShowVerbose:$global:Verbose -NoShim
+            $null = Invoke-EngineCommand -Command "install" -Target $localPath -Yes:$global:AutoConfirm -ShowVerbose:($global:VerboseLevel -ge 1) -NoShim
 
             # Track for rollback (Strip constraints or handle local paths)
             $cleanName = $pkgName.Split(':')[0]
@@ -63,7 +80,7 @@ function Invoke-RomsInstall {
             $successfullyInstalled += $cleanName
 
             # Handle Alternatives Registration
-            $latestMeta = Get-ChildItem $global:METADATA_DIR -Filter "*.json" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            $latestMeta = Get-ChildItem $global:ROMs_METADATA -Filter "*.json" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
             if ($latestMeta) {
                 $meta = Get-Content $latestMeta.FullName -Raw | ConvertFrom-Json
                 $packageId = if ($meta.version) { "$($meta.name)-$($meta.version)" } else { $meta.name }
@@ -94,7 +111,15 @@ function Invoke-RomsInstall {
         Write-Log "System remains clean. No system modifications were committed." "WARN"
     } finally {
         # Cleanup Staging
-        if (Test-Path $stagingDir) { Remove-Item $stagingDir -Recurse -Force | Out-Null }
+        if (Test-Path $stagingDir) { 
+            Write-Log "Cleaning up staging directory: $stagingDir" "TRACE"
+            # File-by-File Physical Truth: Iterate and log each file deletion
+            Get-ChildItem -Path $stagingDir -Recurse -File | ForEach-Object {
+                Write-Log "Deleting staged file: $($_.FullName)" "TRACE"
+                Remove-Item $_.FullName -Force
+            }
+            Remove-Item $stagingDir -Recurse -Force | Out-Null 
+        }
     }
 }
 
@@ -109,6 +134,7 @@ function Stage-Package {
         $pkgName = [System.IO.Path]::GetFileNameWithoutExtension($Identifier)
         $stagedPath = Join-Path $StagingDir "$pkgName.rms"
         Copy-Item -Path $Identifier -Destination $stagedPath -Force
+        if (Test-Path $stagedPath) { Write-Log "Copied local artifact to staging: $(Split-Path $stagedPath -Leaf)" "TRACE" }
     } else {
         # Registry Download
         # Handle identifier with version constraint (name:constraint)
@@ -128,9 +154,11 @@ function Stage-Package {
         Write-Log "Staging $($pkg.name) (v$($pkg.version))..." "INFO"
         if ($resolvedUrl.StartsWith("http")) {
             Invoke-RestMethod -Uri $resolvedUrl -OutFile $stagedPath
+            if (Test-Path $stagedPath) { Write-Log "Downloaded artifact to staging: $(Split-Path $stagedPath -Leaf)" "TRACE" }
         } else {
             if (!(Test-Path $resolvedUrl)) { throw "Resolved download path for '$name' is invalid: $resolvedUrl" }
             Copy-Item -Path $resolvedUrl -Destination $stagedPath -Force
+            if (Test-Path $stagedPath) { Write-Log "Copied artifact to staging: $(Split-Path $stagedPath -Leaf)" "TRACE" }
         }
 
         # Verify Integrity (Size & Hash)
@@ -141,6 +169,7 @@ function Stage-Package {
                 Remove-Item $stagedPath -Force
                 throw "Integrity check failed for '$name'. Size mismatch (Expected: $($pkg.size), Actual: $actualSize)."
             }
+            Write-Log "Verified size integrity: $actualSize bytes" "TRACE"
         }
 
         if ($pkg.sha256 -and $pkg.sha256 -ne "UNAVAILABLE" -and $pkg.sha256 -ne "SKIP") {
@@ -151,6 +180,7 @@ function Stage-Package {
             }
             # Standard: Store hash in session for engine metadata registration
             $global:ROMs_STAGED_HASH = $actualHash
+            Write-Log "Verified hash integrity: $($actualHash.Substring(0,8))..." "TRACE"
             Write-Log "Verified integrity for $($pkg.name) (Hash: $($actualHash.Substring(0,8))...)" "SUCCESS"
         }
     }
@@ -164,11 +194,11 @@ function Get-RomsRegistryPackage {
         [Parameter(Mandatory=$false)][string]$Constraint = "*"
     )
     
-    $cacheFiles = Get-ChildItem -Path $global:CACHE_DIR -Filter "*.index.json"
+    $cacheFiles = Get-ChildItem -Path $global:ROMs_CACHE -Filter "*.index.json"
     $candidates = @()
     
     # Industrial Strength: Use ecosystem constant instead of volatile .NET class
-    $sysArch = $global:Architecture.ToLower()
+    $sysArch = $global:ROMs_ARCH.ToLower()
 
     foreach ($f in $cacheFiles) {
         $data = Get-Content $f.FullName -Raw | ConvertFrom-Json
@@ -216,20 +246,25 @@ function Invoke-RomsUninstall {
 
     # 1. Identify packageId BEFORE engine deletes metadata
     $packageId = $null
-    $metaFile = Join-Path $global:METADATA_DIR "$Name.json"
+    $metaFile = Join-Path $global:ROMs_METADATA "$Name.json"
     if (Test-Path $metaFile) {
         try {
-            $meta = Get-Content $metaFile -Raw | ConvertFrom-Json
+            Write-Log "Reading metadata for unregistration: $metaFile" "TRACE"
+            $rawMeta = Get-Content $metaFile -Raw
+            if ($rawMeta) { Write-Log "Metadata record ($Name): $rawMeta" "RAW" }
+            $meta = $rawMeta | ConvertFrom-Json
             $packageId = if ($meta.version) { "$($meta.name)-$($meta.version)" } else { $meta.name }
-        } catch {}
+        } catch {
+            Write-Log "Failed to read metadata for $Name during unregistration." "WARN"
+        }
     }
 
     # 2. Resolve Engine Path
-    $enginePath = $global:ResolvedEnginePath
+    $enginePath = $global:ROMs_ENGINE_ENTRY
 
     # 3. Dynamic Flag Handshake (Honor User Intent)
     Write-Log "Calling engine (rmspkg) to uninstall: $Name" "INFO"
-    $exitCode = Invoke-EngineCommand -Command "uninstall" -Target $Name -Yes:$global:AutoConfirm -ShowVerbose:$global:Verbose
+    $exitCode = Invoke-EngineCommand -Command "uninstall" -Target $Name -Yes:$global:AutoConfirm -ShowVerbose:($global:VerboseLevel -ge 1)
 
     # 4. Auto-Pivot: Handle alternatives unregistration
     Unregister-Alternative -Name $Name -PackageId $packageId

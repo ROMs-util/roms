@@ -3,33 +3,36 @@
 function Search-Packages {
     param([string]$Query)
 
-    if (-not (Test-Path $global:CACHE_DIR) -or (Get-ChildItem $global:CACHE_DIR -Filter "*.index.json").Count -eq 0) {
+    if (-not (Test-Path $global:ROMs_CACHE) -or (Get-ChildItem $global:ROMs_CACHE -Filter "*.index.json").Count -eq 0) {
         Write-Log "No search cache found. Please run 'roms update' first." "WARN"
         return
     }
 
-    $cacheFiles = Get-ChildItem -Path $global:CACHE_DIR -Filter "*.index.json"
+    $cacheFiles = Get-ChildItem -Path $global:ROMs_CACHE -Filter "*.index.json"
     $allResults = @()
     $sysArch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLower()
 
     foreach ($f in $cacheFiles) {
         try {
             $sourceName = $f.Name.Replace(".index.json", "")
-            $data = Get-Content $f.FullName | ConvertFrom-Json
-            
-            # Support Trinity v1.1.0 (nested packages) or legacy flat array
-            $pkgs = if ($data.packages) { $data.packages } else { $data }
-
-            foreach ($pkg in $pkgs) {
-                # Architecture Filtering (Industrial Strength Guardrail)
-                $pkgArch = if ($pkg.architecture) { $pkg.architecture.ToLower() } else { "all" }
-                if ($pkgArch -ne "all" -and $pkgArch -ne $sysArch) { continue }
-
-                $pkg | Add-Member -MemberType NoteProperty -Name "Source" -Value $sourceName -Force
+            if (Test-Path $f.FullName) {
+                Write-Log "Scanning registry cache: $sourceName ($($f.Name))" "TRACE"
+                $data = Get-Content $f.FullName | ConvertFrom-Json
                 
-                # Filter logic
-                if (-not $Query -or ($pkg.name -like "*$Query*") -or ($pkg.description -like "*$Query*")) {
-                    $allResults += $pkg
+                # Support Trinity v1.1.0 (nested packages) or legacy flat array
+                $pkgs = if ($data.packages) { $data.packages } else { $data }
+
+                foreach ($pkg in $pkgs) {
+                    # Architecture Filtering (Industrial Strength Guardrail)
+                    $pkgArch = if ($pkg.architecture) { $pkg.architecture.ToLower() } else { "all" }
+                    if ($pkgArch -ne "all" -and $pkgArch -ne $sysArch) { continue }
+
+                    $pkg | Add-Member -MemberType NoteProperty -Name "Source" -Value $sourceName -Force
+                    
+                    # Filter logic
+                    if (-not $Query -or ($pkg.name -like "*$Query*") -or ($pkg.description -like "*$Query*")) {
+                        $allResults += $pkg
+                    }
                 }
             }
         } catch {
@@ -42,18 +45,19 @@ function Search-Packages {
         return
     }
 
-    Write-Host "`n----- Available Packages (Remote) -----" -ForegroundColor Cyan
+    Write-Log "----- Available Packages (Remote) -----" "INFO"
     $allResults | Select-Object @{n="Package";e={$_.name}}, version, Source, description | Format-Table -AutoSize
-    Write-Host "Total: $($allResults.Count) package(s) found matching your query.`n"
+    Write-Log "Total: $($allResults.Count) package(s) found matching your query." "SUCCESS"
 }
 
 function List-Packages {
-    if (-not (Test-Path $global:METADATA_DIR)) {
+    Write-Log "Scanning metadata registry..." "TRACE"
+    if (-not (Test-Path $global:ROMs_METADATA)) {
         Write-Log "No packages installed (Metadata registry empty)." "INFO"
         return
     }
 
-    $files = Get-ChildItem -Path $global:METADATA_DIR -Filter "*.json"
+    $files = Get-ChildItem -Path $global:ROMs_METADATA -Filter "*.json"
     if ($files.Count -eq 0) {
         Write-Log "No packages installed." "INFO"
         return
@@ -62,13 +66,17 @@ function List-Packages {
     $pkgs = @()
     foreach ($f in $files) {
         try {
-            $pkgs += Get-Content $f.FullName | ConvertFrom-Json
+            if (Test-Path $f.FullName) {
+                Write-Log "Reading metadata: $($f.Name)" "TRACE"
+                $pkgs += Get-Content $f.FullName | ConvertFrom-Json
+            }
         } catch {
             Write-Log "Failed to read metadata for $($f.Name)" "WARN"
         }
     }
 
-    Write-Host "`n----- Installed Packages -----" -ForegroundColor Cyan
+    Write-Log "----- Installed Packages -----" "INFO"
     $pkgs | Select-Object @{n="Package";e={$_.name}}, version, description | Format-Table -AutoSize
-    Write-Host "Total: $($pkgs.Count) package(s) found.`n"
+    Write-Log "Total: $($pkgs.Count) package(s) found." "SUCCESS"
 }
+

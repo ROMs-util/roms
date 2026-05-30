@@ -18,7 +18,7 @@ function Invoke-EngineCommand {
     # 2. Logic Bug Fix: Session Refresh
     # If not in path, try to add ROMs bin dir to the CURRENT session
     if (-not (Get-Command $executable -ErrorAction SilentlyContinue)) {
-        $binDir = "C:\roms\bin"
+        $binDir = $global:ROMs_BIN
         if (Test-Path $binDir) {
             $env:PATH = "$binDir;$env:PATH"
         }
@@ -33,10 +33,17 @@ function Invoke-EngineCommand {
     [array]$finalArgs = @($Command)
     if ($Target)      { $finalArgs += $Target }
     if ($Yes)         { $finalArgs += "--yes" }
-    if ($ShowVerbose) { $finalArgs += "--verbose" }
     if ($NoShim)      { $finalArgs += "--no-shim" }
 
+    # Forward Diagnostic Verbosity (Industrial Strength Propagation)
+    # Mandate: Never cap verbosity. Ensure -vvv and -vv reach the engine.
+    if ($global:VerboseLevel -eq 3) { $finalArgs += "-vvv" }
+    elseif ($global:VerboseLevel -eq 2) { $finalArgs += "-vv" }
+    elseif ($global:VerboseLevel -eq 1 -or $ShowVerbose) { $finalArgs += "-v" }
+
     # 5. Industrial Strength Execution (Separate Process)
+    Write-Log "Executing engine command: $executable $($finalArgs -join ' ')" "TRACE"
+    
     # Use powershell.exe wrapper to ensure Bypass and NoProfile are enforced
     $powershellCommand = "& '$executable' $($finalArgs -join ' ')"
     $proc = Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -Command `"$powershellCommand`"" -PassThru -Wait -NoNewWindow
@@ -45,6 +52,8 @@ function Invoke-EngineCommand {
     if ($proc.ExitCode -ne 0) {
         throw "Standalone Engine reported failure (Exit Code: $($proc.ExitCode))."
     }
+    Write-Log "Engine command completed successfully (Exit Code: 0)" "TRACE"
 
-    return $proc.ExitCode
+    $exitCode = $proc.ExitCode
+    return $exitCode
 }
