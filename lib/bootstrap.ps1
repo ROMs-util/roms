@@ -6,6 +6,10 @@
 function Test-RomsEngineIntegrity {
     $enginePath = Get-RomsEnginePath
     if (-not $enginePath) { return $false }
+    
+    if (Test-Path $enginePath) {
+        Write-Log "Tracing engine path discovery: $enginePath" "TRACE"
+    }
 
     # Workspace/Dev detection (Skip strict manifest check if in a Git repo)
     if ($enginePath -match "package_installer\\rmspkg.ps1") {
@@ -15,29 +19,38 @@ function Test-RomsEngineIntegrity {
 
     try {
         # 1. Metadata Verification (Source of Truth)
-        $metadataPath = Join-Path $global:METADATA_DIR "rmspkg.json"
+        $metadataPath = Join-Path $global:ROMs_METADATA "rmspkg.json"
         if (-not (Test-Path $metadataPath)) {
             Write-Log "Standalone Engine metadata is missing. Integrity compromised." "WARN"
             return $false
         }
+        Write-Log "Verified metadata source: $metadataPath" "TRACE"
 
         # 2. Manifest Verification (Recursive File Check)
-        $metadata = Get-Content $metadataPath -Raw | ConvertFrom-Json
-        $engineRoot = $global:ENGINE_DIR
+        $rawMeta = Get-Content $metadataPath -Raw
+        Write-Log "rmspkg metadata: $rawMeta" "RAW"
+        $metadata = $rawMeta | ConvertFrom-Json
+        $engineRoot = $global:ROMs_ENGINE_DIR
         
         foreach ($fileRelPath in $metadata.files) {
             $fileAbsPath = Join-Path $engineRoot $fileRelPath
-            if (-not (Test-Path $fileAbsPath)) {
+            if (Test-Path $fileAbsPath) {
+                Write-Log "Verified file integrity: $fileRelPath" "TRACE"
+            } else {
                 Write-Log "Standalone Engine integrity failure: Missing file [$fileRelPath]" "WARN"
                 return $false
             }
         }
 
         # 3. Header Signature Check (Main Entry Point)
-        $header = Get-Content $enginePath -TotalCount 1 -ErrorAction Stop
-        if ($header -notlike "# rmspkg.ps1 - The ROMs-util Standalone Engine*") {
-            Write-Log "Standalone Engine binary has an invalid header signature." "WARN"
-            return $false
+        if (Test-Path $enginePath) {
+            $header = Get-Content $enginePath -TotalCount 1 -ErrorAction Stop
+            if ($header) { Write-Log "rmspkg header signature: $header" "RAW" }
+            if ($header -notlike "# rmspkg.ps1 - The ROMs-util Standalone Engine*") {
+                Write-Log "Standalone Engine binary has an invalid header signature." "WARN"
+                return $false
+            }
+            Write-Log "Verified engine header signature." "TRACE"
         }
 
         return $true
@@ -52,13 +65,14 @@ function Test-RomsEngineIntegrity {
 # ---------------------------------------------
 function Get-RomsEnginePath {
     # 1. Deterministic Standard Root
-    if (Test-Path $global:ENGINE_SCRIPT) {
-        return $global:ENGINE_SCRIPT
+    if (Test-Path $global:ROMs_ENGINE_ENTRY) {
+        return $global:ROMs_ENGINE_ENTRY
     }
 
     # 2. Workspace Detection (Internal/Dev only - strictly if .git exists)
-    $devPath = Join-Path (Split-Path (Split-Path $PSScriptRoot)) "package_installer\rmspkg.ps1"
-    if ((Test-Path (Join-Path (Split-Path (Split-Path $PSScriptRoot)) ".git")) -and (Test-Path $devPath)) {
+    $repoRoot = (Split-Path (Split-Path $PSScriptRoot))
+    $devPath = Join-Path $repoRoot "package_installer\rmspkg.ps1"
+    if ((Test-Path (Join-Path $repoRoot ".git")) -and (Test-Path $devPath)) {
         return $devPath
     }
 
@@ -76,8 +90,8 @@ function Initialize-RomsEngine {
         Write-Log "Standalone Engine missing. Initiating self-healing bootstrap..." "WARN"
     }
 
-    $stagedEngine = Join-Path $global:TEMP_DIR "rmspkg_bootstrap.rms"
-    if (-not (Test-Path $global:TEMP_DIR)) { New-Item -ItemType Directory -Path $global:TEMP_DIR -Force | Out-Null }
+    $stagedEngine = Join-Path $global:ROMs_TEMP "rmspkg_bootstrap.rms"
+    if (-not (Test-Path $global:ROMs_TEMP)) { New-Item -ItemType Directory -Path $global:ROMs_TEMP -Force | Out-Null }
 
     # 1. PHASE A: Registry Search
     $success = $false
@@ -88,8 +102,11 @@ function Initialize-RomsEngine {
             $url = Get-RomsResolvedUrl -Template $pkg.downloadUrl -Package $pkg
             Write-Log "Downloading engine from registry: $url" "INFO"
             Invoke-RestMethod -Uri $url -OutFile $stagedEngine
-            Write-Log "[SUCCESS] Standalone Engine sourced from official cloud registry." "SUCCESS"
-            $success = $true
+            if (Test-Path $stagedEngine) {
+                Write-Log "Standalone Engine artifact staged: $(Split-Path $stagedEngine -Leaf)" "TRACE"
+                Write-Log "[SUCCESS] Standalone Engine sourced from official cloud registry." "SUCCESS"
+                $success = $true
+            }
         }
     } catch {
         Write-Log "Registry bootstrap failed: $($_.Exception.Message)" "WARN"
@@ -99,8 +116,8 @@ function Initialize-RomsEngine {
     if (-not $success) {
         Write-Log "Registry unavailable. Falling back to Dynamic GitHub Recovery..." "WARN"
         try {
-            $release = Invoke-RestMethod -Uri $global:RECOVERY_API
-            $sysArch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLower()
+            $release = Invoke-RestMethod -Uri $global:ROMs_RECOVERY
+            $sysArch = $global:ROMs_ARCH.ToLower()
             
             # Find asset matching architecture (e.g. rmspkg-x64*.rms)
             $asset = $release.assets | Where-Object { $_.name -like "rmspkg-$sysArch*.rms" } | Select-Object -First 1
@@ -112,8 +129,11 @@ function Initialize-RomsEngine {
             if ($asset) {
                 Write-Log "Found recovery asset: $($asset.name)" "INFO"
                 Invoke-RestMethod -Uri $asset.browser_download_url -OutFile $stagedEngine
-                Write-Log "[SUCCESS] Standalone Engine sourced from GitHub Recovery API." "SUCCESS"
-                $success = $true
+                if (Test-Path $stagedEngine) {
+                    Write-Log "Standalone Engine artifact staged: $(Split-Path $stagedEngine -Leaf)" "TRACE"
+                    Write-Log "[SUCCESS] Standalone Engine sourced from GitHub Recovery API." "SUCCESS"
+                    $success = $true
+                }
             }
         } catch {
             Write-Log "GitHub Recovery failed: $($_.Exception.Message)" "ERROR"
@@ -128,20 +148,23 @@ function Initialize-RomsEngine {
     # 3. PHASE C: Bootstrap Exception (Manual Extraction)
     Write-Log "Extracting engine foundations..." "INFO"
     try {
-        if (-not (Test-Path $global:ENGINE_DIR)) { New-Item -ItemType Directory -Path $global:ENGINE_DIR -Force | Out-Null }
+        if (-not (Test-Path $global:ROMs_ENGINE_DIR)) { New-Item -ItemType Directory -Path $global:ROMs_ENGINE_DIR -Force | Out-Null }
         
         # Industrial Strength: Use native .NET ZipFile
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         $zip = [System.IO.Compression.ZipFile]::OpenRead($stagedEngine)
         
         foreach ($entry in $zip.Entries) {
-            $destPath = Join-Path $global:ENGINE_DIR $entry.FullName
+            $destPath = Join-Path $global:ROMs_ENGINE_DIR $entry.FullName
             if ($entry.FullName.EndsWith("/")) {
                 if (-not (Test-Path $destPath)) { New-Item -ItemType Directory -Path $destPath -Force | Out-Null }
             } else {
                 $parentDir = Split-Path $destPath
                 if (-not (Test-Path $parentDir)) { New-Item -ItemType Directory -Path $parentDir -Force | Out-Null }
                 [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $destPath, $true)
+                if (Test-Path $destPath) {
+                    Write-Log "Extracted file: $($entry.FullName)" "TRACE"
+                }
             }
         }
         $zip.Dispose()
@@ -149,7 +172,7 @@ function Initialize-RomsEngine {
 
         # 4. PHASE D: Handshake (Engine-Owned Registration)
         Write-Log "Activating engine shims and metadata..." "INFO"
-        & $global:ENGINE_SCRIPT bootstrap
+        & $global:ROMs_ENGINE_ENTRY bootstrap
 
         Write-Log "Standalone Engine successfully initialized." "SUCCESS"
     } catch {

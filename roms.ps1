@@ -27,13 +27,26 @@ if (-not (Test-Path $libPath)) {
 # ---------------------------------------------
 # ARGUMENT PARSING
 # ---------------------------------------------
-$global:OriginalArgs = $args
+$global:OriginalArgs = @($args)
 $command = $args[0]
 $subArgs = @($args | Select-Object -Skip 1)
 
 # Handle global flags
 $global:AutoConfirm = ($args -contains "-y") -or ($args -contains "--yes")
-$global:Verbose     = ($args -contains "-v") -or ($args -contains "--verbose")
+
+# Multi-Level Verbosity Parsing
+$global:VerboseLevel = 0
+if ($args -contains "-vvv") { $global:VerboseLevel = 3 }
+elseif ($args -contains "-vv") { $global:VerboseLevel = 2 }
+elseif ($args -contains "-v" -or ($args -contains "--verbose")) { $global:VerboseLevel = 1 }
+
+# Legacy flag compatibility
+$global:Verbose = ($global:VerboseLevel -gt 0)
+
+# ---------------------------------------------
+# IDENTITY DISCOVERY (RAW Telemetry)
+# ---------------------------------------------
+if ($args) { Write-Log "Raw Args: $($args -join ' ')" "RAW" }
 
 # ---------------------------------------------
 # COMMAND NORMALIZATION (Modern Standard)
@@ -101,7 +114,7 @@ if ($command -eq "install" -and $subArgs[0]) {
 }
 
 # Start Transaction for modifying commands
-if ($command -in @("install", "uninstall", "upgrade", "verify", "select")) {
+if ($command -in @("select")) {
     Confirm-RomsElevation | Out-Null
     Enter-RomsTransaction
 }

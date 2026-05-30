@@ -1,8 +1,11 @@
 # alternatives.ps1 - Environment Orchestration and Shim Management
 
 function Get-AlternativesData {
-    if (Test-Path $global:ALTERNATIVES_FILE) {
-        return [System.IO.File]::ReadAllText($global:ALTERNATIVES_FILE) | ConvertFrom-Json
+    if (Test-Path $global:ROMs_ALTS) {
+        Write-Log "Reading alternatives database: $global:ROMs_ALTS" "TRACE"
+        $raw = [System.IO.File]::ReadAllText($global:ROMs_ALTS)
+        Write-Log "Raw Alternatives Dump: $raw" "RAW"
+        return $raw | ConvertFrom-Json
     }
     return [PSCustomObject]@{}
 }
@@ -11,9 +14,12 @@ function Set-AlternativesData {
     param($Data)
     try {
         $json = $Data | ConvertTo-Json -Depth 10
-        Write-Log "Saving alternatives database to: $global:ALTERNATIVES_FILE" "DEBUG"
-        [System.IO.File]::WriteAllText($global:ALTERNATIVES_FILE, $json, [System.Text.Encoding]::UTF8)
-        Write-Log "Alternatives database saved successfully." "SUCCESS"
+        Write-Log "Tracing database update: $global:ROMs_ALTS" "TRACE"
+        Write-Log "Raw Alternatives Dump: $json" "RAW"
+        [System.IO.File]::WriteAllText($global:ROMs_ALTS, $json, [System.Text.Encoding]::UTF8)
+        if (Test-Path $global:ROMs_ALTS) {
+            Write-Log "Alternatives database updated successfully." "TRACE"
+        }
     } catch {
         Write-Log "Failed to save alternatives database: $($_.Exception.Message)" "ERROR"
     }
@@ -26,12 +32,15 @@ function Manage-Shim {
         [switch]$Remove
     )
 
-    $shimPath = Join-Path $global:BIN_DIR "$CommandName.bat"
+    $shimPath = Join-Path $global:ROMs_BIN "$CommandName.bat"
 
     if ($Remove) {
-        Write-Log "Removing shim: $CommandName" "INFO"
         if (Test-Path $shimPath) {
+            Write-Log "Removing shim: $CommandName ($shimPath)" "INFO"
             [System.IO.File]::Delete($shimPath)
+            if (-not (Test-Path $shimPath)) {
+                Write-Log "Shim successfully removed: $CommandName" "TRACE"
+            }
         }
         return
     }
@@ -53,6 +62,9 @@ function Manage-Shim {
     try {
         # Use our Native .NET utility for clean write (prevents encoding/quote issues)
         Set-RomsFileContent -FilePath $shimPath -Content $batContent -Encoding ([System.Text.Encoding]::ASCII)
+        if (Test-Path $shimPath) {
+            Write-Log "Shim successfully created: $CommandName ($shimPath)" "TRACE"
+        }
     } catch {
         Write-Log "Failed to create shim: $shimPath" "ERROR"
     }
@@ -113,17 +125,26 @@ function Register-Alternative {
     # --- Update Metadata Registry (Artifact Tracking) ---
     # Derive package name from PackageId (name-version)
     $packageName = if ($PackageId -match '(.+)-[0-9.]+$') { $Matches[1] } else { $PackageId }
-    $metaFile = Join-Path $global:METADATA_DIR "$packageName.json"
+    $metaFile = Join-Path $global:ROMs_METADATA "$packageName.json"
     if (Test-Path $metaFile) {
         try {
-            $meta = Get-Content $metaFile -Raw | ConvertFrom-Json
+            Write-Log "Reading metadata to update artifacts: $metaFile" "TRACE"
+            $rawMeta = [System.IO.File]::ReadAllText($metaFile)
+            Write-Log "Raw Metadata Dump: $rawMeta" "RAW"
+            $meta = $rawMeta | ConvertFrom-Json
+            
             if ($null -eq $meta.artifacts) { $meta | Add-Member -MemberType NoteProperty -Name "artifacts" -Value @() }
             
-            $shimFile = Join-Path $global:BIN_DIR "$CommandName.bat"
+            $shimFile = Join-Path $global:ROMs_BIN "$CommandName.bat"
             if ($meta.artifacts -notcontains $shimFile) {
                 $meta.artifacts += $shimFile
-                $meta | ConvertTo-Json -Depth 10 | Out-File $metaFile -Encoding utf8
-                Write-Log "Updated metadata artifacts for $packageName." "SUCCESS"
+                $newMetaJson = $meta | ConvertTo-Json -Depth 10
+                Write-Log "Tracing metadata update: $metaFile" "TRACE"
+                Write-Log "Raw Updated Metadata: $newMetaJson" "RAW"
+                [System.IO.File]::WriteAllText($metaFile, $newMetaJson, [System.Text.Encoding]::UTF8)
+                if (Test-Path $metaFile) {
+                    Write-Log "Updated metadata artifacts for $packageName." "SUCCESS"
+                }
             }
         } catch {
             Write-Log "Failed to update artifacts in metadata for $packageName." "WARN"
@@ -141,10 +162,13 @@ function Unregister-Alternative {
     $changed = $false
     
     if (-not $PackageId -and $Name) {
-        $metaFile = Join-Path $global:METADATA_DIR "$Name.json"
+        $metaFile = Join-Path $global:ROMs_METADATA "$Name.json"
         if (Test-Path $metaFile) {
             try {
-                $meta = [System.IO.File]::ReadAllText($metaFile) | ConvertFrom-Json
+                Write-Log "Reading metadata for unregistration (Alternatives): $metaFile" "TRACE"
+                $rawMeta = [System.IO.File]::ReadAllText($metaFile)
+                Write-Log "Raw Metadata Dump: $rawMeta" "RAW"
+                $meta = $rawMeta | ConvertFrom-Json
                 $PackageId = if ($meta.version) { "$($meta.name)-$($meta.version)" } else { $meta.name }
             } catch {
                 Write-Log "Failed to read metadata for $Name during unregistration." "WARN"
@@ -189,10 +213,11 @@ function Select-RomsAlternative {
 
     $data = Get-AlternativesData
     if (-not $CommandName) {
-        Write-Host "`n----- Managed Commands (Alternatives) -----" -ForegroundColor Cyan
+        Write-Log "----- Managed Commands (Alternatives) -----" "INFO"
         $data.PSObject.Properties | ForEach-Object {
             $status = if ($_.Value.mode -eq "manual") { "LOCKED ($($_.Value.selected))" } else { "AUTO ($($_.Value.selected))" }
-            Write-Host "  $($_.Name.PadRight(20)) - $status"
+            # For table-like listing, we use standard INFO color logic but prefix with indent
+            Write-Log "  $($_.Name.PadRight(20)) - $status" "INFO"
         }
         return
     }
@@ -216,13 +241,14 @@ function Select-RomsAlternative {
 
     $targetProvider = $null
     if (-not $Selection) {
-        Write-Host "`nSelect a provider for '$CommandName':" -ForegroundColor Cyan
+        Write-Log "Select a provider for '$CommandName':" "INFO"
         $i = 1
         foreach ($p in $entry.providers) {
             $mark = if ($entry.selected -eq $p.package) { "*" } else { " " }
-            Write-Host "  [$i] $mark $($p.package)"
+            Write-Log "  [$i] $mark $($p.package)" "INFO"
             $i++
         }
+        # Interactive Read-Host is exempt from Write-Log
         $choice = Read-Host "`nEnter selection (1-$($i-1) or 'a')"
         if ($choice -eq "a") { Select-RomsAlternative $CommandName "auto"; return }
         if ([int]::TryParse($choice, [ref]0) -and $choice -ge 1 -and $choice -lt $i) {

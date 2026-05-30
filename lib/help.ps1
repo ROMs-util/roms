@@ -16,7 +16,7 @@ function Show-Help {
     Write-Host ""
     Write-Host "GLOBAL FLAGS:" -ForegroundColor Yellow
     Write-Host "  -y, --yes                    - Automatically confirm prompts"
-    Write-Host "  -v, --verbose                - Show detailed operation logs"
+    Write-Host "  -v, --verbose                - Show detailed logs (-v, -vv, -vvv)"
     Write-Host "--------------------------------------------"
     Write-Host ""
 }
