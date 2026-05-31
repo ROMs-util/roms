@@ -72,22 +72,32 @@ function Invoke-RomsInstall {
             $localPath = $stagedFiles[$pkgName]
             
             # 3. Dynamic Flag Handshake (Honor User Intent)
-            $null = Invoke-EngineCommand -Command "install" -Target $localPath -Yes:$global:AutoConfirm -ShowVerbose:($global:VerboseLevel -ge 1) -NoShim
+            # The Engine writes a JSON report (Handshake) to a dedicated temp file
+            $handshakeFile = Join-Path $global:ROMs_TEMP "handshake.json"
+            if (Test-Path $handshakeFile) { Remove-Item $handshakeFile -Force } # Clean old
+            
+            Invoke-EngineCommand -Command "install" -Target $localPath -Yes:$global:AutoConfirm -ShowVerbose:($global:VerboseLevel -ge 1) -NoShim
 
             # Track for rollback (Strip constraints or handle local paths)
             $cleanName = $pkgName.Split(':')[0]
             if (Test-Path $pkgName) { $cleanName = [System.IO.Path]::GetFileNameWithoutExtension($pkgName) }
             $successfullyInstalled += $cleanName
 
-            # Handle Alternatives Registration
-            $latestMeta = Get-ChildItem $global:ROMs_METADATA -Filter "*.json" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-            if ($latestMeta) {
-                $meta = Get-Content $latestMeta.FullName -Raw | ConvertFrom-Json
-                $packageId = if ($meta.version) { "$($meta.name)-$($meta.version)" } else { $meta.name }
-                
-                # Industrial Strength: Ensure priority is passed to the Alternatives system
-                $priority = if ($null -ne $meta.priority) { [int]$meta.priority } else { 100 }
-                Register-Alternative -CommandName $meta.commandName -PackageId $packageId -ExecutablePath $meta.executable -Priority $priority
+            # Handle Alternatives Registration (Machine Truth from File)
+            if (Test-Path $handshakeFile) {
+                Write-Log "Processing engine handshake for alternatives..." "TRACE"
+                $rawHandshake = Get-Content $handshakeFile -Raw
+                if ($rawHandshake) {
+                    Write-Log "Handshake Data: $rawHandshake" "RAW"
+                    $meta = $rawHandshake | ConvertFrom-Json
+                    $packageId = if ($meta.packageId) { $meta.packageId } else { $meta.name }
+                    
+                    # Industrial Strength: Use the explicit primary executable and shims from the handshake
+                    $priority = if ($null -ne $meta.priority) { [int]$meta.priority } else { 100 }
+                    Register-Alternative -CommandName $meta.commandName -PackageId $packageId -ExecutablePath $meta.primaryExecutable -Priority $priority
+                    
+                    Remove-Item $handshakeFile -Force # Audit Cleanup
+                }
             }
         }
         
