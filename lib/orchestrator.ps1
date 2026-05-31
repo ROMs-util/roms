@@ -1,5 +1,19 @@
 # orchestrator.ps1 - High-level Installation and Uninstallation Lifecycle
 
+# ---------------------------------------------
+# INSTALL ORCHESTRATOR (3-Phase Atomic Install)
+# Main install flow: Dependency Mapping -> Acquisition -> Commit.
+#
+# HOW IT WORKS:
+# 1. DEPENDENCY MAPPING: If local file, use directly. If package name, resolve via registry,
+#    then call Get-RomsDependencyList to recursively resolve all sub-dependencies.
+# 2. ACQUISITION: Call Stage-Package for each required package to download/verify into staging dir.
+# 3. COMMIT: For each package, invoke the engine (rmspkg install), process the handshake JSON
+#    for alternatives registration, then clean up staging.
+#
+# ERROR HANDLING: Rolls back $successfullyInstalled on failure via Unregister-Alternative.
+# THROWS: If package not found in registry, or engine command fails.
+# ---------------------------------------------
 function Invoke-RomsInstall {
     param([string]$Identifier)
 
@@ -92,7 +106,7 @@ function Invoke-RomsInstall {
                     $meta = $rawHandshake | ConvertFrom-Json
                     $packageId = if ($meta.packageId) { $meta.packageId } else { $meta.name }
                     
-                    # Industrial Strength: Use the explicit primary executable and shims from the handshake
+                    #  Use the explicit primary executable and shims from the handshake
                     $priority = if ($null -ne $meta.priority) { [int]$meta.priority } else { 100 }
                     Register-Alternative -CommandName $meta.commandName -PackageId $packageId -ExecutablePath $meta.primaryExecutable -Priority $priority
                     
@@ -134,6 +148,20 @@ function Invoke-RomsInstall {
 }
 
 # Helper to download/copy a package to the staging area
+# ---------------------------------------------
+# PACKAGE STAGING (Acquisition Phase)
+# Downloads a package from registry OR copies a local .rms file into the staging directory.
+#
+# HOW IT WORKS:
+# 1. If $Identifier is a local path, copy directly to staging.
+# 2. If registry name, split into name:constraint, lookup via Get-RomsRegistryPackage.
+# 3. Construct download URL from resolved package metadata (url_template).
+# 4. Use native .NET WebClient to download directly to staging path (no temp intermediate).
+# 5. Verify SHA256 hash if package provides one.
+# 6. Throw if package not found or hash mismatch.
+#
+# RETURNS: Staged file path (absolute), or throws on error.
+# ---------------------------------------------
 function Stage-Package {
     param($Identifier, $StagingDir)
 
@@ -155,7 +183,7 @@ function Stage-Package {
         $pkg = Get-RomsRegistryPackage -Name $name -Constraint $constraint
         if (!$pkg) { throw "Dependency '$name' (Constraint: $constraint) is missing from registry index." }
 
-        # Variable Injection (Industrial Strength Resolution)
+        # Variable Injection ( Resolution)
         $resolvedUrl = Get-RomsResolvedUrl -Template $pkg.downloadUrl -Package $pkg
         if (!$resolvedUrl) { throw "Download URL could not be resolved for '$name'." }
 
@@ -172,7 +200,7 @@ function Stage-Package {
         }
 
         # Verify Integrity (Size & Hash)
-        # Industrial Strength: Mandatory verification if data is present in registry
+        # : Mandatory verification if data is present in registry
         if ($pkg.size -and $pkg.size -gt 0) {
             $actualSize = (Get-Item $stagedPath).Length
             if ($actualSize -ne $pkg.size) {
@@ -198,6 +226,20 @@ function Stage-Package {
 }
 
 # Helper to search registry indexes
+# ---------------------------------------------
+# REGISTRY LOOKUP (Best-Version Resolution)
+# Searches all cached registry indexes for a package by exact name, then applies constraint.
+#
+# HOW IT WORKS:
+# 1. Scan all *.index.json files in $ROMs_CACHE.
+# 2. For each index, support both Trinity v1.1.0 nested format and legacy flat array.
+# 3. Filter by current OS architecture (amd64, arm64, etc.).
+# 4. Find package by exact name match.
+# 5. Apply version constraint via Test-RomsVersionMatch if provided.
+# 6. Return best matching version (first found in source order).
+#
+# RETURNS: Package object or $null if not found.
+# ---------------------------------------------
 function Get-RomsRegistryPackage {
     param(
         [Parameter(Mandatory=$true)][string]$Name,
@@ -207,7 +249,7 @@ function Get-RomsRegistryPackage {
     $cacheFiles = Get-ChildItem -Path $global:ROMs_CACHE -Filter "*.index.json"
     $candidates = @()
     
-    # Industrial Strength: Use ecosystem constant instead of volatile .NET class
+    # : Use ecosystem constant instead of volatile .NET class
     $sysArch = $global:ROMs_ARCH.ToLower()
 
     foreach ($f in $cacheFiles) {
@@ -251,6 +293,18 @@ function Get-RomsRegistryPackage {
     return $best
 }
 
+# ---------------------------------------------
+# UNINSTALL ORCHESTRATOR (Safe Removal with Metadata Preservation)
+# Safely removes an installed package by forwarding to the engine.
+#
+# HOW IT WORKS:
+# 1. Read metadata from $ROMs_METADATA/$Name.json BEFORE engine deletes it (to get packageId).
+# 2. Forward to engine via Invoke-EngineCommand "uninstall".
+# 3. Engine deletes actual files and removes metadata.
+# 4. Unregister any alternatives shims registered for this package.
+#
+# RETURNS: Exit code from engine process.
+# ---------------------------------------------
 function Invoke-RomsUninstall {
     param([string]$Name)
 

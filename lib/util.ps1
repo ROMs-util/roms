@@ -1,7 +1,10 @@
 # util.ps1 - Shared native .NET primitives and helper functions
 
 # ---------------------------------------------
-# CRYPTOGRAPHY (Industrial Strength)
+# CRYPTOGRAPHY ()
+# Computes SHA256 hash of a file using native .NET (version-independent).
+# Uses streaming to handle large files without memory bloat.
+# Returns uppercase hex string, or $null if file doesn't exist.
 # ---------------------------------------------
 function Get-RomsFileHash {
     param([Parameter(Mandatory=$true)][string]$FilePath)
@@ -23,7 +26,10 @@ function Get-RomsFileHash {
 }
 
 # ---------------------------------------------
-# FILE IO (Industrial Strength)
+# FILE IO ()
+# Writes text content to a file using native .NET (prevents encoding corruption).
+# Creates parent directory automatically if it doesn't exist.
+# Uses specified encoding (default UTF-8) to avoid PowerShell quote-mangling.
 # ---------------------------------------------
 function Set-RomsFileContent {
     param(
@@ -44,7 +50,10 @@ function Set-RomsFileContent {
     }
 }
 # ---------------------------------------------
-# NETWORKING (Industrial Strength)
+# NETWORKING ()
+# Resolves a download URL template by replacing placeholders with package metadata.
+# Replaces <name>, <version>, <architecture>, <filename> in the template string.
+# Returns the fully resolved URL ready for Invoke-RestMethod or file copy.
 # ---------------------------------------------
 function Get-RomsResolvedUrl {
     param(
@@ -60,7 +69,7 @@ function Get-RomsResolvedUrl {
         $filename = "$($Package.name)_$($Package.architecture)-v$($Package.version).rms" 
     }
 
-    # Industrial Strength: Replace ALL occurrences of placeholders
+    # : Replace ALL occurrences of placeholders
     $url = $Template
     $url = $url.Replace("<name>", $Package.name)
     $url = $url.Replace("<version>", $Package.version)

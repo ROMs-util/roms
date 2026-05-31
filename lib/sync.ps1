@@ -1,5 +1,11 @@
 # sync.ps1 - Registry Synchronization and Source Management
 
+# ---------------------------------------------
+# SOURCE INITIALIZATION
+# Creates the default sources.json if it doesn't exist.
+# Default source is "official" pointing to $global:ROMs_OFFICIAL (GitHub raw URL).
+# Safe to call multiple times - only creates if missing.
+# ---------------------------------------------
 function Initialize-Sources {
     if (-not (Test-Path $global:ROMs_SOURCES)) {
         Write-Log "Initializing default sources list..." "INFO"
@@ -10,6 +16,14 @@ function Initialize-Sources {
     }
 }
 
+# ---------------------------------------------
+# REGISTRY SYNCHRONIZATION
+# Fetches updated package index from all configured sources in sources.json.
+# Downloads via HTTP (Invoke-RestMethod) or copies from local paths.
+# Stores each source's index as <source>.index.json in $ROMs_CACHE.
+# Logs registry data (first 200 chars) at RAW level for debugging.
+# Silently skips failed sources with a WARN log.
+# ---------------------------------------------
 function Update-Registry {
     Initialize-Sources
 

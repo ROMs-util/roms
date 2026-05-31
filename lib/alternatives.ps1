@@ -1,5 +1,11 @@
 # alternatives.ps1 - Environment Orchestration and Shim Management
 
+# ---------------------------------------------
+# ALTERNATIVES DATA READER
+# Reads the JSON alternatives database file at $ROMs_ALTERNATIVES_DB.
+# Returns the parsed JSON object with all registered alternatives,
+# or a default structure if file doesn't exist.
+# ---------------------------------------------
 function Get-AlternativesData {
     if (Test-Path $global:ROMs_ALTS) {
         Write-Log "Reading alternatives database: $global:ROMs_ALTS" "TRACE"
@@ -10,6 +16,11 @@ function Get-AlternativesData {
     return [PSCustomObject]@{}
 }
 
+# ---------------------------------------------
+# ALTERNATIVES DATA WRITER
+# Writes the alternatives database JSON to disk using .NET (prevents encoding issues).
+# Creates parent directory if needed. Returns $true on success.
+# ---------------------------------------------
 function Set-AlternativesData {
     param($Data)
     try {
@@ -25,6 +36,19 @@ function Set-AlternativesData {
     }
 }
 
+# ---------------------------------------------
+# SHIM MANAGEMENT (Installer/Uninstaller for Command Shims)
+# Creates or removes a shim script that redirects to a specific package executable.
+#
+# HOW IT WORKS:
+# 1. BUILD SHIM CONTENT: Creates a PS1 wrapper that calls the engine's shim generator.
+# 2. WRITE: Saves shim to $ROMs_BIN with the command name.
+# 3. PERMISSIONS: Marks as executable (chmod +x equivalent via ACL).
+#
+# Shim format:
+#   # ROMs Shim: roms-alternatives
+#   & "$global:ROMs_ENGINE_ENTRY" shim-install "$CommandName" "$PackageBin"
+# ---------------------------------------------
 function Manage-Shim {
     param(
         [Parameter(Mandatory=$true)][string]$CommandName,
@@ -50,7 +74,7 @@ function Manage-Shim {
     Write-Log "Creating shim: $CommandName -> $ExecutablePath" "INFO"
     
     # ---------------------------------------------
-    # SHIM CONSTRUCTION (Industrial Strength)
+    # SHIM CONSTRUCTION 
     # ---------------------------------------------
     # Logic: If target is a PowerShell script, use 'powershell -File'
     $batContent = if ($ExecutablePath.ToLower().EndsWith(".ps1")) {
@@ -70,6 +94,19 @@ function Manage-Shim {
     }
 }
 
+# ---------------------------------------------
+# ALTERNATIVE REGISTRATION
+# Registers a package's command into the alternatives system with priority.
+#
+# HOW IT WORKS:
+# 1. Validate: Check $ROMs_BIN exists, package path is valid.
+# 2. Load existing database via Get-AlternativesData.
+# 3. Initialize command entry if not exists.
+# 4. Add provider with priority (higher = preferred). Current default = 100.
+# 5. If this becomes the highest priority, auto-select it.
+# 6. Save updated database via Set-AlternativesData.
+# 7. Create shim via Manage-Shim pointing to selected provider.
+# ---------------------------------------------
 function Register-Alternative {
     param(
         [Parameter(Mandatory=$true)][string]$CommandName,
@@ -110,7 +147,7 @@ function Register-Alternative {
 
     # 3. Auto-Selection logic
     if ($entry.mode -eq "auto") {
-        # Industrial Strength: Only pivot if strictly better or first provider
+        # : Only pivot if strictly better or first provider
         $currentProvider = if ($entry.selected) { $entry.providers | Where-Object { $_.package -eq $entry.selected } | Select-Object -First 1 } else { $null }
         
         if (-not $currentProvider -or $Priority -gt $currentProvider.priority) {
@@ -152,6 +189,17 @@ function Register-Alternative {
     }
 }
 
+# ---------------------------------------------
+# ALTERNATIVE UNREGISTRATION
+# Removes a package's command from the alternatives system.
+#
+# HOW IT WORKS:
+# 1. Load database via Get-AlternativesData.
+# 2. If command has no providers left, remove entirely.
+# 3. If removing the selected provider, select next highest priority.
+# 4. Update database and rebuild shim to point to new selection.
+# 5. If no providers remain, remove the shim file.
+# ---------------------------------------------
 function Unregister-Alternative {
     param(
         [string]$Name,
@@ -208,6 +256,18 @@ function Unregister-Alternative {
     if ($changed) { Set-AlternativesData -Data $data }
 }
 
+# ---------------------------------------------
+# INTERACTIVE PROVIDER SELECTOR
+# Interactive CLI menu to manually select which provider to use for a command.
+# Requires Administrator elevation (via Confirm-RomsElevation).
+#
+# HOW IT WORKS:
+# 1. Load database, validate command exists.
+# 2. Display numbered list of available providers with priorities.
+# 3. Prompt user to pick a number (or 'q' to quit).
+# 4. Update selected_provider and rebuild shim.
+# 5. Show which provider is now active.
+# ---------------------------------------------
 function Select-RomsAlternative {
     param([string]$CommandName, [string]$Selection)
 

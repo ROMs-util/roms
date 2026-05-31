@@ -1,5 +1,11 @@
 # help.ps1 - Functional CLI Help and Usage Menus
 
+# ---------------------------------------------
+# CLI HELP DISPLAY
+# Displays the ROMs package manager command reference in the console.
+# Shows all available commands, their syntax, and global flags.
+# Output uses Write-Host (not Write-Log) to preserve formatting.
+# ---------------------------------------------
 function Show-Help {
     Write-Host ""
     Write-Host "----- ROMs-util Package Manager (roms) -----" -ForegroundColor Cyan

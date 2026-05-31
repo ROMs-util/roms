@@ -2,6 +2,11 @@
 
 # ---------------------------------------------
 # COMMAND EXECUTION (Phase 2 - Professionalism)
+# Forwards commands to the standalone engine (rmspkg) via session PATH or absolute path.
+# Auto-adds ROMs bin to PATH if engine not found, then falls back to $ResolvedEnginePath.
+# Passes through verbosity flags (-v, -vv, -vvv) to the engine.
+# Uses Start-Process to preserve engine's native Write-Host colors and spacing.
+# Returns exit code from the engine process.
 # ---------------------------------------------
 function Invoke-EngineCommand {
     param(
@@ -35,7 +40,7 @@ function Invoke-EngineCommand {
     if ($Yes)         { $finalArgs += "--yes" }
     if ($NoShim)      { $finalArgs += "--no-shim" }
 
-    # Forward Diagnostic Verbosity (Industrial Strength Propagation)
+    # Forward Diagnostic Verbosity ( Propagation)
     # Mandate: Never cap verbosity. Ensure -vvv and -vv reach the engine.
     if ($global:VerboseLevel -eq 3) { $finalArgs += "-vvv" }
     elseif ($global:VerboseLevel -eq 2) { $finalArgs += "-vv" }
