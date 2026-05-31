@@ -148,3 +148,9 @@ roms.ps1 (Router)
 5. Update this README if adding new commands or changing architecture.
 
 ---
+
+## 📚 See Also
+- [ROMs-util Documentation](https://github.com/ROMs-util/roms-docs/blob/main/README.md)
+- [Standalone Engine](https://github.com/ROMs-util/rmspkg/blob/main/readme.md)
+- [Package Builder](https://github.com/ROMs-util/rms-builder/blob/main/README.md)
+- [Registry Indexer](https://github.com/<owner>/ROMs-util/blob/main/package_registry/README.md)
