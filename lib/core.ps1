@@ -22,7 +22,7 @@ $global:ROMs_RECOVERY   = "https://api.github.com/repos/ROMs-util/rmspkg/release
 $global:ROMs_TEMP       = "$global:ROMs_ROOT\temp"
 $global:ROMs_LOCK       = "$global:ROMs_TEMP\roms.lock"
 
-# Industrial Strength: Multi-Version Architecture Detection
+#  Multi-Version Architecture Detection
 $global:ROMs_ARCH = if ($PSVersionTable.PSVersion.Major -ge 6) {
     [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
 } else {
@@ -31,6 +31,10 @@ $global:ROMs_ARCH = if ($PSVersionTable.PSVersion.Major -ge 6) {
 
 # ---------------------------------------------
 # LOGGING SYSTEM
+# Writes timestamped log entries to console (color-coded) and master log file.
+# Uses global $VerboseLevel: 0=INFO/WARN/ERROR/SUCCESS, 1=+DEBUG, 2=+TRACE, 3=+RAW
+# Detects JSON in message and pretty-prints it for human readability.
+# Retries file write up to 5 times on lock contention.
 # ---------------------------------------------
 function Write-Log {
     param(
@@ -127,6 +131,8 @@ function Write-Log {
 
 # ---------------------------------------------
 # TRANSACTION SAFETY (The Lock System)
+# Prevents concurrent ROMs operations by writing PID to a lock file.
+# If lock exists, checks if that PID is still running. If dead, auto-cleans.
 # ---------------------------------------------
 function Enter-RomsTransaction {
     if (-not (Test-Path $global:ROMs_TEMP)) {
@@ -154,6 +160,8 @@ function Enter-RomsTransaction {
     $lockData | ConvertTo-Json | Out-File -FilePath $global:ROMs_LOCK -Encoding utf8
 }
 
+# Releases the exclusive lock so other ROMs operations can proceed.
+# Call in a 'finally' block to ensure cleanup even on errors.
 function Exit-RomsTransaction {
     if (Test-Path $global:ROMs_LOCK) {
         Remove-Item $global:ROMs_LOCK -Force
@@ -162,6 +170,8 @@ function Exit-RomsTransaction {
 
 # ---------------------------------------------
 # ELEVATION UTILITY (Manager Level)
+# Checks if running as Administrator. If not, re-launches the script
+# with elevation (RunAs), preserving all original args and verbosity flags.
 # ---------------------------------------------
 function Confirm-RomsElevation {
     $currentUser = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()

@@ -2,6 +2,23 @@
 
 $script:ResolutionStack = @()
 
+# ---------------------------------------------
+# DEPENDENCY RESOLUTION (Recursive Depth-First)
+# Resolves package dependencies into a flat install list using depth-first traversal.
+# Input: $Dependencies (array of "name:constraint" strings like "beta:^1.0.0")
+# Output: Array of "name:version" strings ready for installation
+#
+# HOW IT WORKS:
+# 1. Normalize input (packages, roms, or flat array) into name:constraint pairs
+# 2. Skip if already in metadata (already installed)
+# 3. Detect circular dependencies via ResolutionStack tracking
+# 4. Skip if already collected in this resolution run
+# 5. Find best satisfying version in registry via Get-RomsRegistryPackage
+# 6. Recurse into sub-dependencies before adding to the list
+# 7. Return collected list in install order (leaf dependencies first)
+#
+# THROWS: "Dependency 'X' not found in registry" or "Circular dependency chain found"
+# ---------------------------------------------
 function Get-RomsDependencyList {
     param(
         [Parameter(Mandatory=$true)]

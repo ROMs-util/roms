@@ -1,5 +1,12 @@
-# discovery.ps1 - Package Search and Listing Logic
-
+# ---------------------------------------------
+# PACKAGE SEARCH
+# Searches all cached registry index files for packages matching a query string.
+# Matches against package name and description (case-insensitive).
+# Filters by current OS architecture (amd64, arm64, etc.), skipping non-matching.
+# Supports both Trinity v1.1.0 nested format and legacy flat array format.
+# Logs each cache scan at TRACE level for debugging.
+# Returns array of matching packages with Source property added, or $null if none.
+# ---------------------------------------------
 function Search-Packages {
     param([string]$Query)
 
@@ -23,7 +30,7 @@ function Search-Packages {
                 $pkgs = if ($data.packages) { $data.packages } else { $data }
 
                 foreach ($pkg in $pkgs) {
-                    # Architecture Filtering (Industrial Strength Guardrail)
+                    # Architecture Filtering 
                     $pkgArch = if ($pkg.architecture) { $pkg.architecture.ToLower() } else { "all" }
                     if ($pkgArch -ne "all" -and $pkgArch -ne $sysArch) { continue }
 
@@ -50,6 +57,14 @@ function Search-Packages {
     Write-Log "Total: $($allResults.Count) package(s) found matching your query." "SUCCESS"
 }
 
+# ---------------------------------------------
+# INSTALLED PACKAGE LIST
+# Reads all .json metadata files from $ROMs_METADATA to list installed packages.
+# Returns formatted table with Package, version, description.
+# Logs each metadata file read at TRACE level.
+# Shows "Installed Packages" header if packages found.
+# Silently handles missing metadata directory or empty metadata.
+# ---------------------------------------------
 function List-Packages {
     Write-Log "Scanning metadata registry..." "TRACE"
     if (-not (Test-Path $global:ROMs_METADATA)) {

@@ -2,7 +2,7 @@
 # Usage: roms <command> [args]
 
 # ---------------------------------------------
-# BOOTSTRAP LIBRARY (Industrial Strength)
+# BOOTSTRAP LIBRARY 
 # ---------------------------------------------
 $global:EntryScriptPath = $PSCommandPath
 $libPath = Join-Path $PSScriptRoot "lib"
@@ -80,7 +80,7 @@ if ($command -eq "install" -and $subArgs[0]) {
     if ($subArgs[0].EndsWith(":")) {
         $pkgName = $subArgs[0].TrimEnd(':')
         
-        # Industrial Strength: Write to Stderr so the message is visible even if Stdout is redirected to a file
+        # : Write to Stderr so the message is visible even if Stdout is redirected to a file
         [Console]::Error.WriteLine("[ERROR] Detected mangled version constraint for '$pkgName'.")
         [Console]::Error.WriteLine("[WARN] CMD likely intercepted a redirection character (>, <). Wrap constraints in quotes: roms install `"${pkgName}:>=1.0.0`"")
         

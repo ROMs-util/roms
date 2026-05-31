@@ -1,8 +1,11 @@
-# semver.ps1 - Industrial Strength SemVer 2.0 Engine for ROMs-util
+# semver.ps1 -  SemVer 2.0 Engine for ROMs-util
 # Follows MODULARITY_STANDARDS.md and DESIGN_STANDARDS.md
 
 # ---------------------------------------------
 # VERSION PARSING (The .NET Rule)
+# Parses a SemVer 2.0 string into its component parts: Major, Minor, Patch,
+# Pre-release, and Build metadata. Returns a PSCustomObject or $null if invalid.
+# Regex: ^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?:-(?<pre>...))?(?:\+(?<build>...))?$
 # ---------------------------------------------
 function Get-RomsSemVerParts {
     param([Parameter(Mandatory=$true)][string]$Version)
@@ -24,7 +27,11 @@ function Get-RomsSemVerParts {
 }
 
 # ---------------------------------------------
-# VERSION COMPARISON (Industrial Strength)
+# VERSION COMPARISON ()
+# Compares two SemVer 2.0 version strings.
+# Returns: 1 if v1 > v2, -1 if v1 < v2, 0 if equal, -2 if either is unparseable.
+# Handles pre-release precedence (stable > pre-release) per SemVer spec.
+# Compares numeric vs string pre-release segments correctly.
 # ---------------------------------------------
 function Compare-RomsVersions {
     param(
@@ -35,7 +42,7 @@ function Compare-RomsVersions {
     $p1 = Get-RomsSemVerParts -Version $v1
     $p2 = Get-RomsSemVerParts -Version $v2
 
-    # Industrial Strength: Return unique sentinel (-2) for unparseable versions 
+    # : Return unique sentinel (-2) for unparseable versions 
     # to prevent false-positive equality (0) in the matcher.
     if (!$p1 -or !$p2) { return -2 }
 
@@ -79,6 +86,11 @@ function Compare-RomsVersions {
 
 # ---------------------------------------------
 # CONSTRAINT MATCHING (The Resolver)
+# Tests whether a version satisfies a version constraint.
+# Supports: exact, ^ (caret/Major-compatible), ~ (tilde/Minor-compatible),
+# and range operators: >=, >, <=, <, *, latest.
+# Returns $true or $false.
+# Pre-release guardrail: a constraint without pre-tag MUST NOT match a pre-release version.
 # ---------------------------------------------
 function Test-RomsVersionMatch {
     param(

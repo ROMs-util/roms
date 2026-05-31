@@ -2,6 +2,11 @@
 
 # ---------------------------------------------
 # ENGINE INTEGRITY (Self-Healing Watchdog)
+# Verifies the standalone engine (rmspkg) is installed and uncorrupted.
+# Checks three layers: (1) metadata exists, (2) all files in metadata are present,
+# (3) entry point has correct signature header.
+# Skips manifest check in dev workspace (detects package_installer\rmspkg.ps1 path).
+# Returns $true if clean, $false if integrity compromised.
 # ---------------------------------------------
 function Test-RomsEngineIntegrity {
     $enginePath = Get-RomsEnginePath
@@ -61,7 +66,10 @@ function Test-RomsEngineIntegrity {
 }
 
 # ---------------------------------------------
-# ENGINE DISCOVERY (Industrial Strength)
+# ENGINE DISCOVERY
+# Locates the standalone engine (rmspkg.ps1) in this order:
+# (1) Standard path via $global:ROMs_ENGINE_ENTRY, (2) Dev workspace (if .git exists),
+# (3) Returns $null if not found.
 # ---------------------------------------------
 function Get-RomsEnginePath {
     # 1. Deterministic Standard Root
@@ -81,6 +89,12 @@ function Get-RomsEnginePath {
 
 # ---------------------------------------------
 # SELF-HEALING BOOTSTRAP (Hybrid Recovery)
+# Attempts to restore a missing or corrupted standalone engine via a 4-phase approach:
+# Phase A: Downloads from official registry (Update-Registry + Get-RomsRegistryPackage).
+# Phase B: Falls back to GitHub Recovery API if registry fails.
+# Phase C: Extracts .rms archive to $ROMs_ENGINE_DIR using native .NET ZipFile.
+# Phase D: Calls engine's bootstrap command to register shims and metadata.
+# Throws if all sources exhausted.
 # ---------------------------------------------
 function Initialize-RomsEngine {
     $path = Get-RomsEnginePath
@@ -150,7 +164,7 @@ function Initialize-RomsEngine {
     try {
         if (-not (Test-Path $global:ROMs_ENGINE_DIR)) { New-Item -ItemType Directory -Path $global:ROMs_ENGINE_DIR -Force | Out-Null }
         
-        # Industrial Strength: Use native .NET ZipFile
+        #  Use native .NET ZipFile
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         $zip = [System.IO.Compression.ZipFile]::OpenRead($stagedEngine)
         
