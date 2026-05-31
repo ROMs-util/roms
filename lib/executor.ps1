@@ -40,20 +40,21 @@ function Invoke-EngineCommand {
     if ($global:VerboseLevel -eq 3) { $finalArgs += "-vvv" }
     elseif ($global:VerboseLevel -eq 2) { $finalArgs += "-vv" }
     elseif ($global:VerboseLevel -eq 1 -or $ShowVerbose) { $finalArgs += "-v" }
-
-    # 5. Industrial Strength Execution (Separate Process)
+    # 5. Simple & Clean Execution (Restores Native Colors and Spacing)
     Write-Log "Executing engine command: $executable $($finalArgs -join ' ')" "TRACE"
     
-    # Use powershell.exe wrapper to ensure Bypass and NoProfile are enforced
-    $powershellCommand = "& '$executable' $($finalArgs -join ' ')"
-    $proc = Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -Command `"$powershellCommand`"" -PassThru -Wait -NoNewWindow
+    # We execute directly WITHOUT pipeline capture.
+    # This restores the Engine's native Write-Host colors and professional boxes.
+    # Data is exchanged via the dedicated 'handshake.json' file instead of the pipeline.
+    & $executable $finalArgs
     
     # Standard Handshake verification
-    if ($proc.ExitCode -ne 0) {
-        throw "Standalone Engine reported failure (Exit Code: $($proc.ExitCode))."
+    if ($LASTEXITCODE -ne 0) {
+        throw "Standalone Engine reported failure (Exit Code: $LASTEXITCODE)."
     }
     Write-Log "Engine command completed successfully (Exit Code: 0)" "TRACE"
 
-    $exitCode = $proc.ExitCode
-    return $exitCode
+    # We return NOTHING to the pipeline to prevent the '0' leak
+    return
 }
+

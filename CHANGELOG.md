@@ -7,13 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [v0.9.0-alpha] - 2026-05-31
 ### Added
 - **Industrial Diagnostic Standardization**:
   - Ported the refactored `Write-Log` with dual-target formatting (Pretty-RAW for Console, Tight-Inline for machine audits).
   - Enforced **"File-by-File Physical Truth"** for Level 2 (TRACE) logging, ensuring every individual file operation is audited.
   - Implemented **"Anti-Ghost"** diagnostics: all diagnostic logs are now physically verified via `Test-Path` before emission.
   - Synchronized all core paths to the standardized **`$global:ROMs_`** variable hierarchy.
+- **Machine Handshake Integration**:
+  - Implemented the **File Handshake**: the manager now receives 100% accurate installation data via a temporary `handshake.json` file, diffusing the "Logic Bomb" that relied on fuzzy newest-file lookups.
 - **Robustness**:
   - Hardened argument parsing and router logic using array sub-expressions `@($args | ...)` to prevent null-indexing crashes.
   - Standardized the purging of legacy variables (e.g., `$systemRoot`, `$metadataRoot`).
