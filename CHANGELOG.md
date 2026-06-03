@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
+## [Unrelease]
+### Fixed
+- **Verbose Output Visibility**: Resolved issue where verbose engine logs (Trace/Debug) were missing during uninstallation. Restored `Start-Process` for engine invocation to correctly stream engine output to the console while maintaining command-based execution priority.
 
 ## [v0.9.0-alpha] - 2026-05-31
 ### Added
