@@ -5,8 +5,12 @@ All notable changes to the `roms` package manager will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+### Fixed
+- **Robust SemVer parsing**: Replaced brittle string-splitting with a structured `Parse-RomsSemVerIdentifier` function, ensuring accurate, future-proof resolution of versioned package identifiers (`name:constraint`).
+
 ---
-## [Unrelease]
+## [d7257e0]
 ### Fixed
 - **Verbose Output Visibility**: Resolved issue where verbose engine logs (Trace/Debug) were missing during uninstallation. Restored `Start-Process` for engine invocation to correctly stream engine output to the console while maintaining command-based execution priority.
 

@@ -50,9 +50,9 @@ function Get-RomsDependencyList {
 
     foreach ($depIdentifier in $depIdentifiers) {
         # 2. Parse Identifier (e.g., "beta:^1.0.0" or just "beta")
-        $parts = $depIdentifier.Split(':')
-        $depName = $parts[0]
-        $constraint = if ($parts.Count -gt 1) { $parts[1] } else { "*" }
+        $parsed = Parse-RomsSemVerIdentifier -Identifier $depIdentifier
+        $depName = $parsed.Name
+        $constraint = $parsed.Constraint
 
         Write-Log "Tracing dependency: $depName (Constraint: $constraint)" "TRACE"
 

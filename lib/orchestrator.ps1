@@ -48,9 +48,9 @@ function Invoke-RomsInstall {
             Write-Log "Local artifact detected: $Identifier" "DEBUG"
         } else {
             # Handle identifier with version constraint (name:constraint)
-            $parts = $Identifier.Split(':')
-            $name = $parts[0]
-            $constraint = if ($parts.Count -gt 1) { $parts[1] } else { "*" }
+            $parsed = Parse-RomsSemVerIdentifier -Identifier $Identifier
+            $name = $parsed.Name
+            $constraint = $parsed.Constraint
 
             $pkg = Get-RomsRegistryPackage -Name $name -Constraint $constraint
             if (!$pkg) { throw "Abort: Package '$name' (Constraint: $constraint) not found in registry." }
