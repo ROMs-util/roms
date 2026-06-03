@@ -2,7 +2,37 @@
 # Follows MODULARITY_STANDARDS.md and DESIGN_STANDARDS.md
 
 # ---------------------------------------------
+# IDENTIFIER PARSING (Robust Standard)
+# Parses a package identifier into its component parts: Name and Constraint.
+# Returns: [PSCustomObject] @{ Name; Constraint }
+# ---------------------------------------------
+function Parse-RomsSemVerIdentifier {
+    param([Parameter(Mandatory=$true)][string]$Identifier)
+
+    # FUTURE ARCHITECTURE HINT (Pointers & Plugins):
+    # This function is the central gateway for all identifier parsing. 
+    # To support future features without breaking existing resolution:
+    # 1. ATOMIC POINTERS: Extend regex to capture '@channel' and populate a '.Channel' property.
+    # 2. PLUGIN MODULARITY: Extend regex to capture 'provider@' and populate a '.Provider' property.
+    # CRITICAL: Always maintain '.Name' and '.Constraint' properties as the stable base.
+    
+    if ($Identifier -match '^(?<name>[^:]+)(?::(?<constraint>.+))?$') {
+        return [PSCustomObject]@{
+            Name       = $Matches['name']
+            Constraint = if ($Matches['constraint']) { $Matches['constraint'] } else { "*" }
+        }
+    }
+    
+    # Fallback to identifier as name
+    return [PSCustomObject]@{
+        Name       = $Identifier
+        Constraint = "*"
+    }
+}
+
+# ---------------------------------------------
 # VERSION PARSING (The .NET Rule)
+
 # Parses a SemVer 2.0 string into its component parts: Major, Minor, Patch,
 # Pre-release, and Build metadata. Returns a PSCustomObject or $null if invalid.
 # Regex: ^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?:-(?<pre>...))?(?:\+(?<build>...))?$
