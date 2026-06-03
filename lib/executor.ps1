@@ -48,14 +48,13 @@ function Invoke-EngineCommand {
     # 5. Simple & Clean Execution (Restores Native Colors and Spacing)
     Write-Log "Executing engine command: $executable $($finalArgs -join ' ')" "TRACE"
     
-    # We execute directly WITHOUT pipeline capture.
-    # This restores the Engine's native Write-Host colors and professional boxes.
-    # Data is exchanged via the dedicated 'handshake.json' file instead of the pipeline.
-    & $executable $finalArgs
+    # Use Start-Process to ensure engine logs (Write-Host) reach the console directly.
+    # Passing the array to -ArgumentList handles the splatting automatically.
+    $proc = Start-Process $executable -ArgumentList $finalArgs -Wait -NoNewWindow -PassThru
     
     # Standard Handshake verification
-    if ($LASTEXITCODE -ne 0) {
-        throw "Standalone Engine reported failure (Exit Code: $LASTEXITCODE)."
+    if ($proc.ExitCode -ne 0) {
+        throw "Standalone Engine reported failure (Exit Code: $($proc.ExitCode))."
     }
     Write-Log "Engine command completed successfully (Exit Code: 0)" "TRACE"
 
