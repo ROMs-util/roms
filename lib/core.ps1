@@ -14,6 +14,9 @@ $global:ROMs_SOURCES    = "$global:ROMs_ROOT\sources.json"
 $global:ROMs_ALTS       = "$global:ROMs_ROOT\alternatives.json"
 $global:ROMs_OFFICIAL   = "https://raw.githubusercontent.com/ROMs-util/rms-atlas/main/index.json"
 
+# Channel Awareness Globals 
+$global:ROMs_CHANNEL         = "mainnet"
+
 # Standalone Engine Constants
 $global:ROMs_ENGINE_DIR = "$global:ROMs_ROOT\rmspkg"
 $global:ROMs_ENGINE_ENTRY = "$global:ROMs_ENGINE_DIR\rmspkg.ps1"
@@ -131,8 +134,21 @@ function Write-Log {
 
 # ---------------------------------------------
 # TRANSACTION SAFETY (The Lock System)
-# Prevents concurrent ROMs operations by writing PID to a lock file.
-# If lock exists, checks if that PID is still running. If dead, auto-cleans.
+# Prevents concurrent ROMs operations by writing the process ID to a lock file.
+# Implements re-entrant safety and process-exclusive cleanup.
+# ---------------------------------------------
+$script:RomsLockAcquired = $false
+
+# ---------------------------------------------
+# ENTER TRANSACTION
+# Acquires an exclusive lock for the current process.
+#
+# HOW IT WORKS:
+# 1. Checks if a lock file exists.
+# 2. If existing lock belongs to the current PID, allows re-entry (bypass).
+# 3. If lock belongs to another active process, aborts with 'System Busy'.
+# 4. If lock is stale (PID dead), auto-cleans and proceeds.
+# 5. Writes a new JSON lock file with current PID and timestamp.
 # ---------------------------------------------
 function Enter-RomsTransaction {
     if (-not (Test-Path $global:ROMs_TEMP)) {
@@ -143,6 +159,12 @@ function Enter-RomsTransaction {
         try {
             $lockInfo = Get-Content $global:ROMs_LOCK | ConvertFrom-Json
             $procId = $lockInfo.pid
+            
+            # FIX: If the lock belongs to US, we already have it (Re-entrant safety)
+            if ($procId -eq $PID) {
+                $script:RomsLockAcquired = $true
+                return 
+            }
             
             if (Get-Process -Id $procId -ErrorAction SilentlyContinue) {
                 Write-Log "System Busy: Another ROMs operation is running (PID: $procId)." "ERROR"
@@ -158,13 +180,30 @@ function Enter-RomsTransaction {
 
     $lockData = @{ pid = $PID; startTime = (Get-Date -Format "o") }
     $lockData | ConvertTo-Json | Out-File -FilePath $global:ROMs_LOCK -Encoding utf8
+    $script:RomsLockAcquired = $true
 }
 
-# Releases the exclusive lock so other ROMs operations can proceed.
-# Call in a 'finally' block to ensure cleanup even on errors.
+# ---------------------------------------------
+# EXIT TRANSACTION
+# Releases the exclusive lock held by the current process.
+#
+# HOW IT WORKS:
+# 1. Verifies that the current script instance actually acquired the lock.
+# 2. Verifies that the lock file on disk still belongs to the current PID.
+# 3. Deletes the lock file to allow other operations to proceed.
+# ---------------------------------------------
 function Exit-RomsTransaction {
-    if (Test-Path $global:ROMs_LOCK) {
-        Remove-Item $global:ROMs_LOCK -Force
+    if ($script:RomsLockAcquired -and (Test-Path $global:ROMs_LOCK)) {
+        try {
+            $lockInfo = Get-Content $global:ROMs_LOCK | ConvertFrom-Json
+            if ($lockInfo.pid -eq $PID) {
+                Remove-Item $global:ROMs_LOCK -Force
+            }
+        } catch {
+            # Fallback if file is corrupted
+            Remove-Item $global:ROMs_LOCK -Force
+        }
+        $script:RomsLockAcquired = $false
     }
 }
 

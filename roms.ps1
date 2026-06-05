@@ -12,17 +12,18 @@ if (-not (Test-Path $libPath)) {
 }
 
 # Load Modules in safe Foundation-First order (Modularity Standard)
-. (Join-Path $libPath "core.ps1")         # Foundations
-. (Join-Path $libPath "util.ps1")         # Primitives
-. (Join-Path $libPath "semver.ps1")       # SemVer 2.0 Engine
-. (Join-Path $libPath "bootstrap.ps1")    # Engine Discovery & Self-Healing
-. (Join-Path $libPath "executor.ps1")     # Command Execution (rmspkg)
-. (Join-Path $libPath "help.ps1")         # UI
-. (Join-Path $libPath "sync.ps1")         # Registry
-. (Join-Path $libPath "discovery.ps1")    # Search
-. (Join-Path $libPath "resolver.ps1")     # Dependencies
-. (Join-Path $libPath "alternatives.ps1") # Environment
-. (Join-Path $libPath "orchestrator.ps1") # Orchestration (Loaded last)
+. (Join-Path $libPath "core.ps1")         ; Write-Log "Sourced core.ps1" "TRACE"
+. (Join-Path $libPath "util.ps1")         ; Write-Log "Sourced util.ps1" "TRACE"
+. (Join-Path $libPath "semver.ps1")       ; Write-Log "Sourced semver.ps1" "TRACE"
+. (Join-Path $libPath "bootstrap.ps1")    ; Write-Log "Sourced bootstrap.ps1" "TRACE"
+. (Join-Path $libPath "executor.ps1")     ; Write-Log "Sourced executor.ps1" "TRACE"
+. (Join-Path $libPath "help.ps1")         ; Write-Log "Sourced help.ps1" "TRACE"
+. (Join-Path $libPath "source.ps1")       ; Write-Log "Sourced source.ps1" "TRACE"
+. (Join-Path $libPath "sync.ps1")         ; Write-Log "Sourced sync.ps1" "TRACE"
+. (Join-Path $libPath "discovery.ps1")    ; Write-Log "Sourced discovery.ps1" "TRACE"
+. (Join-Path $libPath "resolver.ps1")     ; Write-Log "Sourced resolver.ps1" "TRACE"
+. (Join-Path $libPath "alternatives.ps1") ; Write-Log "Sourced alternatives.ps1" "TRACE"
+. (Join-Path $libPath "orchestrator.ps1") ; Write-Log "Sourced orchestrator.ps1" "TRACE"
 
 # ---------------------------------------------
 # ARGUMENT PARSING
@@ -114,15 +115,24 @@ if ($command -eq "install" -and $subArgs[0]) {
 }
 
 # Start Transaction for modifying commands
-if ($command -in @("select")) {
-    Confirm-RomsElevation | Out-Null
-    Enter-RomsTransaction
+if ($command -in @("select", "source", "install", "uninstall", "update")) {
+    # Surgical Elevation & Transaction Logic
+    $needsWrite = $false
+    if ($command -eq "source" -and $subArgs[0] -in @("on", "off")) { $needsWrite = $true }
+    elseif ($command -in @("select")) { $needsWrite = $true }
+
+    if ($needsWrite) {
+        Confirm-RomsElevation | Out-Null
+        Enter-RomsTransaction
+    }
 }
+
 
 try {
     switch ($command) {
         "list"      { List-Packages }
         "update"    { Update-Registry }
+        "source"    { Invoke-RomsSourceCommand -SubCommand $subArgs[0] -RemainingArgs @($subArgs | Select-Object -Skip 1) }
         "search"    { Search-Packages -Query $subArgs[0] }
         "select"    { Select-RomsAlternative -CommandName $subArgs[0] -Selection $subArgs[1] }
         "install"   { 
