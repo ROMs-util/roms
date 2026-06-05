@@ -5,8 +5,35 @@ All notable changes to the `roms` package manager will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [Unrelease] - 2026-06-05
+### Added
+- **Channel Awareness & Registry Orchestration**:
+  - Implemented the `roms source` command suite supporting `list`, `on`, `off`, and `pick` sub-commands.
+  - Introduced hierarchical `sources.json` schema with support for partitioned channels (e.g., `mainnet`, `testnet`).
+  - Upgraded registry synchronization to download and cache partitioned indices (`source.channel.index.json`).
+- **Ancestor Shell Detection**:
+  - Implemented robust process-tree crawling to identify the persistent terminal host (CMD/PS). This ensures session-isolated `pick` commands remain stable through transient `.bat` wrappers and cross-process calls.
+- **Channel Isolation Hardening**:
+  - Enforced strict registry lookup filtering. `Search-Packages` and `Invoke-RomsInstall` now only scan channels that are globally "ON" or session-"PICKED", making experimental packages invisible in fresh windows.
+
+### Changed
+- **Surgical UAC Elevation**:
+  - Removed Administrator privilege requirements for `roms update`, `roms install`, and `roms uninstall`. Elevation is now surgically restricted to system-wide configuration changes (`source on/off`, `select`).
+- **Bootstrap Standardization**:
+  - Refactored the core loading sequence in `roms.ps1` to follow the **Foundation-First** standard with mandatory TRACE-level "Physical Truth" audit logs for every sourced module.
+- **Module Orchestration**:
+  - Reordered module loading to ensure `source.ps1` (session discovery) is available to the sync and discovery layers.
+
 ### Fixed
+- **Re-entrant Transaction Safety**:
+  - Hardened the lock system in `lib/core.ps1` to allow a process to bypass its own lock, resolving the "System Busy" (Self-Locking) error during UAC transitions.
+- **Robust PPID Discovery**:
+  - Implemented multi-method PPID detection (CIM/WMI/Process) ensuring full compatibility with both PowerShell 5.1 and modern PowerShell Core.
+- **SemVer Coordinate Stability**:
+  - Ported the refactored `Parse-RomsSemVerIdentifier` to ensure accurate resolution of versioned identifiers without breaking under complex coordinate strings.
+---
+## [450d874]
+### Added
 - **Robust SemVer parsing**: Replaced brittle string-splitting with a structured `Parse-RomsSemVerIdentifier` function, ensuring accurate, future-proof resolution of versioned package identifiers (`name:constraint`).
 
 ---

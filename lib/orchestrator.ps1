@@ -225,34 +225,38 @@ function Stage-Package {
     return $stagedPath
 }
 
-# Helper to search registry indexes
 # ---------------------------------------------
-# REGISTRY LOOKUP (Best-Version Resolution)
-# Searches all cached registry indexes for a package by exact name, then applies constraint.
+# REGISTRY PACKAGE LOOKUP (Hardened)
+# Finds the best available version of a package across active channels.
 #
 # HOW IT WORKS:
-# 1. Scan all *.index.json files in $ROMs_CACHE.
-# 2. For each index, support both Trinity v1.1.0 nested format and legacy flat array.
-# 3. Filter by current OS architecture (amd64, arm64, etc.).
-# 4. Find package by exact name match.
-# 5. Apply version constraint via Test-RomsVersionMatch if provided.
-# 6. Return best matching version (first found in source order).
+# 1. Resolves active channel identifiers to enforce session isolation.
+# 2. Scans local registry indices that match active identifiers.
+# 3. Collects all candidates satisfying the SemVer constraint.
+# 4. Selects the candidate with the highest SemVer precedence.
 #
-# RETURNS: Package object or $null if not found.
+# RETURNS: [PSCustomObject] Best package metadata or $null if not found.
 # ---------------------------------------------
 function Get-RomsRegistryPackage {
     param(
         [Parameter(Mandatory=$true)][string]$Name,
         [Parameter(Mandatory=$false)][string]$Constraint = "*"
     )
-    
+
     $cacheFiles = Get-ChildItem -Path $global:ROMs_CACHE -Filter "*.index.json"
+    $activeIDs = Get-RomsActiveChannelIdentifiers # Only scan active channels
     $candidates = @()
-    
     # : Use ecosystem constant instead of volatile .NET class
     $sysArch = $global:ROMs_ARCH.ToLower()
 
     foreach ($f in $cacheFiles) {
+        $sourceName = $f.Name.Replace(".index.json", "")
+        
+        # ISOLATION FILTER: Skip if this cache file doesn't match an active identifier
+        if ($activeIDs -notcontains $sourceName) {
+            continue
+        }
+
         $data = Get-Content $f.FullName -Raw | ConvertFrom-Json
         if (!$data) { continue }
 

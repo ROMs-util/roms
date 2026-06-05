@@ -1,11 +1,13 @@
 # ---------------------------------------------
 # PACKAGE SEARCH
 # Searches all cached registry index files for packages matching a query string.
-# Matches against package name and description (case-insensitive).
-# Filters by current OS architecture (amd64, arm64, etc.), skipping non-matching.
-# Supports both Trinity v1.1.0 nested format and legacy flat array format.
-# Logs each cache scan at TRACE level for debugging.
-# Returns array of matching packages with Source property added, or $null if none.
+#
+# HOW IT WORKS:
+# 1. Resolves all currently active channel identifiers (ON or session-PICKED).
+# 2. Iterates through all *.index.json files in the local cache.
+# 3. ISOLATION: Skips any index file that does not match an active identifier.
+# 4. Filters packages by query string and architecture compatibility.
+# 5. Renders a formatted table of matches including the source/channel origin.
 # ---------------------------------------------
 function Search-Packages {
     param([string]$Query)
@@ -16,12 +18,20 @@ function Search-Packages {
     }
 
     $cacheFiles = Get-ChildItem -Path $global:ROMs_CACHE -Filter "*.index.json"
+    $activeIDs = Get-RomsActiveChannelIdentifiers # Only scan active channels
     $allResults = @()
     $sysArch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString().ToLower()
 
     foreach ($f in $cacheFiles) {
         try {
             $sourceName = $f.Name.Replace(".index.json", "")
+            
+            # ISOLATION FILTER: Skip if this cache file doesn't match an active identifier
+            if ($activeIDs -notcontains $sourceName) {
+                Write-Log "Ignoring inactive channel cache: $sourceName" "DEBUG"
+                continue
+            }
+
             if (Test-Path $f.FullName) {
                 Write-Log "Scanning registry cache: $sourceName ($($f.Name))" "TRACE"
                 $data = Get-Content $f.FullName | ConvertFrom-Json
