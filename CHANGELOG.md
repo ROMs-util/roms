@@ -5,7 +5,7 @@ All notable changes to the `roms` package manager will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unrelease] - 2026-06-05
+## [015892f] - 2026-06-05
 ### Added
 - **Channel Awareness & Registry Orchestration**:
   - Implemented the `roms source` command suite supporting `list`, `on`, `off`, and `pick` sub-commands.

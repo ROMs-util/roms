@@ -36,9 +36,16 @@ These flags work with all commands:
 | `roms install <name>` | Download and install a package by name from the registry. |
 | `roms install <path>` | Install a local `.rms` package file. |
 | `roms uninstall <name>` | Completely remove an app and its associated shims. |
+| `roms source <cmd>` | Manage registry channels (list, on, off, pick). |
 | `roms select <command>` | Manually choose which provider to use for a shared command. |
 
-### 4. Managing Alternatives (`roms select`)
+### 4. Channel Awareness (`roms source`)
+The manager supports partitioned registry channels (e.g., `mainnet` and `testnet`) to safely isolate experimental packages.
+- **`source list`**: View all registered sources and their channel statuses.
+- **`source on/off <channel>`**: Globally enable or disable a channel across all sources (Requires UAC).
+- **`source pick <channel>`**: Temporarily activate a channel for the **current window only**. This allows you to sync and install test packages in one terminal without affecting other sessions.
+
+### 5. Managing Alternatives (`roms select`)
 If multiple packages provide the same command (e.g., two versions of a tool), `roms` uses an Alternatives system:
 - **Auto Mode:** Automatically uses the provider with the highest priority.
 - **Manual Mode:** Users can "lock" a command to a specific package using `roms select <command>`.
@@ -54,17 +61,26 @@ If multiple packages provide the same command (e.g., two versions of a tool), `r
 | `ROMs_LOGS` | Log files directory | `C:\roms\logs` |
 | `ROMs_TEMP` | Temporary workspace | `C:\roms\temp` |
 
-### 6. Troubleshooting
-- **Elevation:** Most `roms` operations require Administrator privileges for disk writes. A UAC prompt will appear; the elevated window will stay open (`-NoExit`) so you can review the results.
-- **System Busy:** If you see "Another ROMs operation is running," it means a lock file exists. If no other `roms` window is open, you can manually delete `C:\roms\temp\roms.lock`.
+### 7. Troubleshooting
+- **Elevation (Surgical UAC):** Only commands that modify system-wide configuration (`source on/off`, `select`) require Administrator privileges. Standard operations like `update`, `install`, and `uninstall` run non-elevated.
+- **System Busy (Re-entrant Safety):** If you see "Another ROMs operation is running," it means a lock file exists. The system now supports re-entrant locks, meaning a single process won't block itself during elevation or complex transactions.
+- **Window Isolation:** If you run `source pick testnet`, that setting is isolated to your current terminal using **Ancestor Shell Detection**. Closing the window clears the temporary session.
 - **Logs:** Review the master log at `C:\roms\logs\roms.log` for detailed error information.
 - **Engine Missing:** If `rmspkg` is not found, `roms` will automatically attempt to self-heal by downloading the latest version.
 - **Registry Outdated:** Run `roms update` to fetch the latest package indexes from all configured sources.
 
-### 7. Examples
+### 8. Examples
 ```powershell
 # List installed packages
 roms list
+
+# Manage channels
+roms source list
+roms source on testnet
+roms source pick testnet  # Session-only activation
+
+# Sync registry (syncs active + picked channels)
+roms update
 
 # Search for a package
 roms search git
@@ -99,7 +115,8 @@ This guide is for developers extending the manager or integrating it with other 
 - **Router:** `roms.ps1` handles argument parsing and command routing.
 - **Orchestrator:** `lib/orchestrator.ps1` contains the main installation and uninstallation lifecycle logic.
 - **Core:** `lib/core.ps1` manages global constants, colorized logging, and the Transaction/Lock system.
-- **Registry:** `lib/sync.ps1` and `lib/discovery.ps1` handle remote registry synchronization and package search.
+- **Registry:** `lib/sync.ps1` and `lib/discovery.ps1` handle remote registry synchronization and package search with channel isolation filtering.
+- **Source:** `lib/source.ps1` manages channel orchestration and window-isolated session state.
 - **Resolver:** `lib/resolver.ps1` provides recursive dependency resolution.
 - **Alternatives:** `lib/alternatives.ps1` manages the Linux-style command alternatives system.
 - **Utilities:** `lib/util.ps1` (hashing, file I/O, URL resolution), `lib/semver.ps1` (version parsing/comparison), `lib/bootstrap.ps1` (engine integrity and recovery), `lib/executor.ps1` (engine command forwarding), `lib/help.ps1` (CLI help).
@@ -121,6 +138,8 @@ roms.ps1 (Router)
     +---> lib/bootstrap.ps1 (Test-RomsEngineIntegrity, Get-RomsEnginePath, Initialize-RomsEngine)
     |
     +---> lib/executor.ps1 (Invoke-EngineCommand)
+    |
+    +---> lib/source.ps1 (Get-RomsActiveChannel, Get-RomsSessionID, Invoke-RomsSourceCommand)
     |
     +---> lib/sync.ps1 (Initialize-Sources, Update-Registry)
     |
