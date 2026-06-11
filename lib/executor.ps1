@@ -17,40 +17,30 @@ function Invoke-EngineCommand {
         [switch]$NoShim
     )
 
-    # 1. Resolve Priority (Command -> Session PATH -> Absolute)
-    $executable = "rmspkg"
-    
-    # 2. Logic Bug Fix: Session Refresh
-    # If not in path, try to add ROMs bin dir to the CURRENT session
-    if (-not (Get-Command $executable -ErrorAction SilentlyContinue)) {
-        $binDir = $global:ROMs_BIN
-        if (Test-Path $binDir) {
-            $env:PATH = "$binDir;$env:PATH"
-        }
+    # 1. Resolve Engine Entry Point
+    # Mandate: Use direct .ps1 execution via powershell.exe to bypass shell-association issues.
+    $engineEntry = $global:ResolvedEnginePath
+    if (-not (Test-Path $engineEntry)) {
+        throw "Standalone Engine entry point not found at '$engineEntry'."
     }
 
-    # 3. Fallback to Absolute if still missing
-    if (-not (Get-Command $executable -ErrorAction SilentlyContinue)) {
-        $executable = $global:ResolvedEnginePath
-    }
-
-    # 4. Build Arguments (Design Standard: Flag Pattern)
-    [array]$finalArgs = @($Command)
+    # 2. Build Arguments (Design Standard: Flag Pattern)
+    # Use explicit powershell array for -ArgumentList to preserve symbols.
+    [array]$finalArgs = @("-ExecutionPolicy", "Bypass", "-File", $engineEntry, $Command)
     if ($Target)      { $finalArgs += $Target }
     if ($Yes)         { $finalArgs += "--yes" }
     if ($NoShim)      { $finalArgs += "--no-shim" }
 
     # Forward Diagnostic Verbosity ( Propagation)
-    # Mandate: Never cap verbosity. Ensure -vvv and -vv reach the engine.
     if ($global:VerboseLevel -eq 3) { $finalArgs += "-vvv" }
     elseif ($global:VerboseLevel -eq 2) { $finalArgs += "-vv" }
     elseif ($global:VerboseLevel -eq 1 -or $ShowVerbose) { $finalArgs += "-v" }
-    # 5. Simple & Clean Execution (Restores Native Colors and Spacing)
-    Write-Log "Executing engine command: $executable $($finalArgs -join ' ')" "TRACE"
+
+    # 3. Simple & Clean Execution (Restores Native Colors and Spacing)
+    Write-Log "Executing engine: powershell.exe $($finalArgs -join ' ')" "TRACE"
     
-    # Use Start-Process to ensure engine logs (Write-Host) reach the console directly.
-    # Passing the array to -ArgumentList handles the splatting automatically.
-    $proc = Start-Process $executable -ArgumentList $finalArgs -Wait -NoNewWindow -PassThru
+    # Use powershell.exe explicitly to ensure the script runs correctly.
+    $proc = Start-Process powershell.exe -ArgumentList $finalArgs -Wait -NoNewWindow -PassThru
     
     # Standard Handshake verification
     if ($proc.ExitCode -ne 0) {

@@ -78,3 +78,72 @@ function Get-RomsResolvedUrl {
     
     return $url
 }
+
+# ---------------------------------------------
+# ARGUMENT RECOVERY (Industrial RAW)
+# Captures arguments from the environment tunnel or raw command line.
+# Preserves symbols like '>', '^', and '~' by parsing the raw string.
+# Returns a high-fidelity array of arguments.
+# ---------------------------------------------
+function Get-RomsRawArguments {
+    param([array]$FallbackArgs = @())
+
+    try {
+        # 1. TUNNEL RECOVERY: Capture literal input from the protected CMD tunnel.
+        $raw = $env:ROMS_RAW_ARGS
+        
+        # Extract everything after the 'roms' command in the raw shell string
+        if ($raw -match 'roms(?:\.bat)?["\s]+(.*)$') {
+            $raw = $Matches[1].Trim()
+            # Remove trailing quote from shell wrapping (cmd /c)
+            if ($raw -match '^(.*)"$') { $raw = $Matches[1].Trim() }
+        }
+
+        # 2. SHELL OPERATOR GUARD: Truncate at first unquoted delimiter (&, |, >, <, ;)
+        # This prevents 'roms pkg && other' from seeing '&& other' as arguments.
+        if (-not [string]::IsNullOrWhiteSpace($raw)) {
+            $cleanRaw = ""
+            $inQuote = $false
+            for ($i = 0; $i -lt $raw.Length; $i++) {
+                $char = $raw[$i]
+                if ($char -eq '"') { $inQuote = -not $inQuote }
+                if (-not $inQuote -and ($char -match '[&|><;]')) { break }
+                $cleanRaw += $char
+            }
+            $raw = $cleanRaw.Trim()
+        }
+
+        # 3. CLEAR TUNNEL
+        $env:ROMS_RAW_ARGS = $null
+        
+        # 4. Fallback to [Environment]::CommandLine if tunnel is missing
+        if ([string]::IsNullOrWhiteSpace($raw)) {
+            $raw = [Environment]::CommandLine
+            $anchor = $global:EntryScriptPath
+            if (-not [string]::IsNullOrWhiteSpace($anchor)) {
+                $index = $raw.IndexOf($anchor)
+                if ($index -ne -1) {
+                    $raw = $raw.Substring($index + $anchor.Length).Trim()
+                    if ($raw.StartsWith('"')) { $raw = $raw.Substring(1).Trim() }
+                }
+            }
+        }
+
+        if ([string]::IsNullOrWhiteSpace($raw)) { return $FallbackArgs }
+
+        # 5. Regex Tokenization (Industrial Standard)
+        $regex = '(?i)"([^"]*)"|([^\s]+)'
+        $matches = [regex]::Matches($raw, $regex)
+        
+        $result = @()
+        foreach ($m in $matches) {
+            $token = if ($m.Groups[1].Success) { $m.Groups[1].Value } else { $m.Groups[2].Value }
+            $result += $token
+        }
+        
+        if ($result.Count -eq 0) { return $FallbackArgs }
+        return ,$result
+    } catch {
+        return $FallbackArgs
+    }
+}
