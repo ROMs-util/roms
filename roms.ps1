@@ -28,38 +28,71 @@ if (-not (Test-Path $libPath)) {
 # ---------------------------------------------
 # ARGUMENT PARSING
 # ---------------------------------------------
-$global:OriginalArgs = @($args)
-$command = $args[0]
-$subArgs = @($args | Select-Object -Skip 1)
+# USER-RECOMMENDED TUNNEL BRIDGE: Capture raw input via environment variable.
+$global:ROMs_Args = Get-RomsRawArguments -FallbackArgs @($args)
+$command = $global:ROMs_Args[0]
+$subArgs = @($global:ROMs_Args | Select-Object -Skip 1)
 
 # Handle global flags
-$global:AutoConfirm = ($args -contains "-y") -or ($args -contains "--yes")
-
-# Multi-Level Verbosity Parsing
+$global:AutoConfirm = ($global:ROMs_Args -contains "-y") -or ($global:ROMs_Args -contains "--yes")
 $global:VerboseLevel = 0
-if ($args -contains "-vvv") { $global:VerboseLevel = 3 }
-elseif ($args -contains "-vv") { $global:VerboseLevel = 2 }
-elseif ($args -contains "-v" -or ($args -contains "--verbose")) { $global:VerboseLevel = 1 }
+if ($global:ROMs_Args -contains "-vvv") { $global:VerboseLevel = 3 }
+elseif ($global:ROMs_Args -contains "-vv") { $global:VerboseLevel = 2 }
+elseif ($global:ROMs_Args -contains "-v" -or ($global:ROMs_Args -contains "--verbose")) { $global:VerboseLevel = 1 }
 
 # Legacy flag compatibility
 $global:Verbose = ($global:VerboseLevel -gt 0)
 
-# ---------------------------------------------
-# IDENTITY DISCOVERY (RAW Telemetry)
-# ---------------------------------------------
-if ($args) { Write-Log "Raw Args: $($args -join ' ')" "RAW" }
+# Raw Telemetry
+if ($global:ROMs_Args) { Write-Log "Raw Args: $($global:ROMs_Args -join ' ')" "RAW" }
 
 # ---------------------------------------------
-# COMMAND NORMALIZATION (Modern Standard)
+# COMMAND ROUTING & MIRRORING (Log Restoration)
 # ---------------------------------------------
-# Default to help if nothing provided or help requested
-if (-not $command -or $command -eq "help") {
-    Show-Help
-    exit 0
+if ($command -eq "install") {
+    # --- INDUSTRIAL GHOST RECONSTRUCTOR (MIRROR PIPE) ---
+    # Detect if CMD mangled output into a file. If so, we enable MIRRORING
+    # to show all logs in the CURRENT terminal bypassing the redirection.
+    for ($i = 0; $i -lt $subArgs.Count; $i++) {
+        if ($subArgs[$i].EndsWith(":") -and -not $subArgs[$i].StartsWith("-")) {
+            $pkgName = $subArgs[$i].TrimEnd(':')
+            $potentialFile = Get-ChildItem -File | 
+                Where-Object { $_.LastWriteTime -gt (Get-Date).AddSeconds(-20) } | 
+                Sort-Object LastWriteTime -Descending | Select-Object -First 1
+
+            if ($null -ne $potentialFile) {
+                # 1. Recover coordinate from trash file
+                $verPart = ($potentialFile.Name -split " ")[0]
+                $op = ">"; if ($verPart.StartsWith("=")) { $op = ">="; $verPart = $verPart.Substring(1) }
+                $subArgs[$i] = "${pkgName}:${op}${verPart}"
+                
+                # 2. Enable Mirroring: Write-Log will now use Console.Error for all output.
+                $global:Roms_RedirectionActive = $true
+                Write-Log "Redirection Detected. Mirroring logs to terminal for $pkgName..." "SUCCESS"
+
+                # SCHEDULE AGGRESSIVE CLEANUP: Wait for current PID and its children to exit.
+                $cleanupPath = $potentialFile.FullName
+                $cleanupScript = "while (Get-Process -Id $PID -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 500 }; if (Test-Path '$cleanupPath') { Remove-Item '$cleanupPath' -Force }"
+                Start-Process powershell -WindowStyle Hidden -ArgumentList "-ExecutionPolicy Bypass", "-Command", $cleanupScript
+            }
+        }
+    }
+    # Update globals with reconstructed values
+    $global:ROMs_Args = @($command) + $subArgs
+
+    if ($subArgs[0] -and (Test-Path $subArgs[0] -PathType Leaf)) {
+        $subArgs[0] = (Resolve-Path $subArgs[0]).Path
+        $global:ROMs_Args = @($command) + $subArgs
+    }
 }
 
 # ---------------------------------------------
-# ENGINE INITIALIZATION (Self-Healing)
+# COMMAND NORMALIZATION
+# ---------------------------------------------
+if (-not $command -or $command -eq "help") { Show-Help; exit 0 }
+
+# ---------------------------------------------
+# ENGINE INITIALIZATION
 # ---------------------------------------------
 if (-not (Test-RomsEngineIntegrity)) {
     Initialize-RomsEngine
@@ -70,53 +103,8 @@ if (-not (Test-RomsEngineIntegrity)) {
 }
 $global:ResolvedEnginePath = Get-RomsEnginePath
 
-# ---------------------------------------------
-# COMMAND ROUTING
-# ---------------------------------------------
-# Resolve local paths early to handle elevation/context changes
-if ($command -eq "install" -and $subArgs[0]) {
-    # --- CMD COMPATIBILITY GUARDRAIL (REMOVABLE IF RUNNING NATIVE PS1) ---
-    # Detect if CMD mangled the command by interpreting '>' as redirection
-    # When redirected, CMD strips everything from '>' onwards, leaving only the colon.
-    if ($subArgs[0].EndsWith(":")) {
-        $pkgName = $subArgs[0].TrimEnd(':')
-        
-        # : Write to Stderr so the message is visible even if Stdout is redirected to a file
-        [Console]::Error.WriteLine("[ERROR] Detected mangled version constraint for '$pkgName'.")
-        [Console]::Error.WriteLine("[WARN] CMD likely intercepted a redirection character (>, <). Wrap constraints in quotes: roms install `"${pkgName}:>=1.0.0`"")
-        
-        # Find potential redirection file (0-byte, created in last 5 seconds)
-        $potentialFile = Get-ChildItem -File | 
-            Where-Object { $_.Length -eq 0 -and $_.LastWriteTime -gt (Get-Date).AddSeconds(-5) } | 
-            Sort-Object LastWriteTime -Descending | 
-            Select-Object -First 1
-
-        if ($null -ne $potentialFile) {
-            [Console]::Error.Write("[WARN] Accidental redirection created file: '$($potentialFile.Name)'. Delete it? [Y/n]: ")
-            $choice = [Console]::In.ReadLine()
-            if ($choice -match '^[Yy]') {
-                # Launch decoupled background cleanup (CMD holds a lock until this process exits)
-                $cleanupCmd = "Start-Sleep -s 1; if (Test-Path '$($potentialFile.FullName)') { Remove-Item '$($potentialFile.FullName)' -Force }"
-                Start-Process powershell -WindowStyle Hidden -ArgumentList "-ExecutionPolicy Bypass -Command `"$cleanupCmd`""
-                [Console]::Error.WriteLine("[INFO] Background cleanup scheduled for '$($potentialFile.Name)'.")
-            }
-        }
-        
-        exit 1
-    }
-    # --- END CMD COMPATIBILITY GUARDRAIL ---
-
-    if (Test-Path $subArgs[0] -PathType Leaf) {
-        $absolutePath = (Resolve-Path $subArgs[0]).Path
-        $subArgs[0] = $absolutePath
-        # Update OriginalArgs so the relaunch uses the absolute path
-        $global:OriginalArgs = @($command) + $subArgs
-    }
-}
-
 # Start Transaction for modifying commands
 if ($command -in @("select", "source", "install", "uninstall", "update")) {
-    # Surgical Elevation & Transaction Logic
     $needsWrite = $false
     if ($command -eq "source" -and $subArgs[0] -in @("on", "off")) { $needsWrite = $true }
     elseif ($command -in @("select")) { $needsWrite = $true }
@@ -127,7 +115,6 @@ if ($command -in @("select", "source", "install", "uninstall", "update")) {
     }
 }
 
-
 try {
     switch ($command) {
         "list"      { List-Packages }
@@ -137,12 +124,14 @@ try {
         "select"    { Select-RomsAlternative -CommandName $subArgs[0] -Selection $subArgs[1] }
         "install"   { 
             if (-not $subArgs[0]) { Write-Log "Package name or .rms path required." "ERROR"; break }
-            Invoke-RomsInstall -Identifier $subArgs[0] 
+            foreach ($identifier in $subArgs) {
+                if ($identifier.StartsWith("-")) { continue }
+                Invoke-RomsInstall -Identifier $identifier
+            }
         }
         "uninstall" { 
             if (-not $subArgs[0]) { Write-Log "Package name required." "ERROR"; break }
             foreach ($pkgName in $subArgs) {
-                # Skip flags like -y or -v
                 if ($pkgName.StartsWith("-")) { continue }
                 Invoke-RomsUninstall -Name $pkgName
             }

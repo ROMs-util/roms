@@ -5,6 +5,17 @@ All notable changes to the `roms` package manager will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2026-06-11
+### Added
+- **Native SemVer Symbol Support**:
+  - **Standard Caret & Tilde:** Implemented native `^` (Major compatibility) and `~` (Patch compatibility) logic in `lib/semver.ps1`, correctly handling pre-1.0 (`0.x.y`) safety boundaries.
+  - **Explicit Pinning:** Added support for the `=` operator (e.g., `pkg:=1.0.0`) for strict version locking.
+- **Unquoted Shell Safety (Bulletproof Tunnel)**:
+  - **Delayed Expansion Fix:** Refactored `roms.bat` to use `enabledelayedexpansion` and `!VAR!` syntax. This protects unquoted carets (`^`) from CMD's parser during argument transfer.
+  - **High-Fidelity Argument Parser:** Upgraded `Get-RomsRawArguments` in `lib/util.ps1` to extract arguments from literal shell memory, ensuring 100% fidelity without requiring quotes.
+- **Shell Operator Guard**:
+  - **Delimiter Isolation:** Added logic to truncate arguments at the first unquoted shell delimiter (`&`, `|`, `>`, `<`, `;`). This prevents "over-capture" when chaining commands (e.g., `roms install pkg && roms list`).
+
 ## [015892f] - 2026-06-05
 ### Added
 - **Channel Awareness & Registry Orchestration**:

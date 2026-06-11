@@ -128,7 +128,27 @@ function Write-Log {
             "RAW"     { "Magenta" }
             Default   { "White" }
         }
-        Write-Host $consoleLine -ForegroundColor $color
+
+        # MIRROR PIPE: If redirection is active, standard Write-Host is hidden in the trash file.
+        # We mirror to Console.Error with ANSI colors to force visibility in the current terminal.
+        if ($global:Roms_RedirectionActive) {
+            # ANSI Escape Codes for high-fidelity terminal coloring
+            $ansiColor = switch ($Level) {
+                "ERROR"   { "$([char]27)[31m" } # Red
+                "WARN"    { "$([char]27)[33m" } # Yellow
+                "SUCCESS" { "$([char]27)[32m" } # Green
+                "DEBUG"   { "$([char]27)[90m" } # Gray
+                "TRACE"   { "$([char]27)[36m" } # Cyan
+                "RAW"     { "$([char]27)[35m" } # Magenta
+                Default   { "$([char]27)[0m"  } # Reset
+            }
+            $reset = "$([char]27)[0m"
+            
+            # Bypasses redirection handle with full color support
+            [Console]::Error.WriteLine("${ansiColor}${consoleLine}${reset}")
+        } else {
+            Write-Host $consoleLine -ForegroundColor $color
+        }
     }
 }
 
@@ -218,23 +238,22 @@ function Confirm-RomsElevation {
         Write-Log "Elevation required for system modification. Requesting Administrator privileges..." "INFO"
         
         $scriptPath = $global:EntryScriptPath
-        $escapedArgs = $global:OriginalArgs | ForEach-Object { 
-            if ($_ -match '[ \^><~=:]') { "`"$_`"" } else { $_ } 
-        }
-        $joinedArgs = $escapedArgs -join " "
         
-        # Explicitly forward multi-level verbosity to the elevated process
-        if ($global:VerboseLevel -eq 3 -and $joinedArgs -notlike "*-vvv*") { $joinedArgs += " -vvv" }
-        elseif ($global:VerboseLevel -eq 2 -and $joinedArgs -notlike "*-vv*") { $joinedArgs += " -vv" }
-        elseif ($global:VerboseLevel -eq 1 -and $joinedArgs -notlike "*-v*") { $joinedArgs += " -v" }
-
-        $powershellCommand = "& '$scriptPath' $joinedArgs"
+        # PREVENTION-FIRST BRIDGE: Pass arguments via Base64 JSON
+        # This makes it physically impossible for the shell to interpret '>' or '^' as redirections.
         try {
+            $argsJson = $global:OriginalArgs | ConvertTo-Json -Compress
+            $argsBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($argsJson))
+            
+            # Build the relaunch command: Decode JSON array and splat into the entry script
+            $relaunchCmd = "`$a = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('$argsBase64')) | ConvertFrom-Json; & '$scriptPath' @a"
+            $encodedCmd = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($relaunchCmd))
+
             $currentDir = (Get-Location).Path
-            Start-Process powershell -Verb RunAs -WorkingDirectory $currentDir -ArgumentList "-NoExit -ExecutionPolicy Bypass -Command `"$powershellCommand`""
+            Start-Process powershell -Verb RunAs -WorkingDirectory $currentDir -ArgumentList "-NoExit", "-ExecutionPolicy", "Bypass", "-EncodedCommand", $encodedCmd
             exit 0 # Exit the non-elevated process
         } catch {
-            Write-Log "Elevation failed or was cancelled by user." "ERROR"
+            Write-Log "Elevation failed or was cancelled by user: $($_.Exception.Message)" "ERROR"
             exit 1
         }
     }

@@ -130,8 +130,8 @@ function Test-RomsVersionMatch {
 
     if ($Constraint -eq "*" -or $Constraint -eq "latest") { return $true }
 
-    # Normalize Constraint
-    if ($Constraint -match "^(\^|~|>=|>|<=|<)?\s*(.*)$") {
+    # Normalize Constraint (Strict: No 'v' stripping)
+    if ($Constraint -match "^(\^|~|>=|>|<=|<|=)?\s*(.*)$") {
         $op = $Matches[1]
         $targetStr = $Matches[2]
         
@@ -146,14 +146,24 @@ function Test-RomsVersionMatch {
             return $false
         }
 
-        # Exact Match (no operator)
-        if (!$op) { return (Compare-RomsVersions -v1 $CurrentVersion -v2 $targetStr) -eq 0 }
+        # Exact Match (no operator or explicit '=')
+        if (!$op -or $op -eq "=") { return (Compare-RomsVersions -v1 $CurrentVersion -v2 $targetStr) -eq 0 }
 
-        # Caret (^) - Compatibility (Compatible with Major)
+        # Caret (^) - Compatibility (Industrial Standard)
         if ($op -eq "^") {
             if (!$t) { return $false }
-            # Same major, and current >= target
-            if ($v.Major -ne $t.Major) { return $false }
+            # Same major, and current >= target (General Case)
+            if ($t.Major -gt 0) {
+                if ($v.Major -ne $t.Major) { return $false }
+            }
+            # 0.x.y Case: Breaks on minor (Acts like ~)
+            elseif ($t.Minor -gt 0) {
+                if ($v.Major -ne 0 -or $v.Minor -ne $t.Minor) { return $false }
+            }
+            # 0.0.x Case: Breaks on patch (Acts like exact)
+            else {
+                if ($v.Major -ne 0 -or $v.Minor -ne 0 -or $v.Patch -ne $t.Patch) { return $false }
+            }
             return (Compare-RomsVersions -v1 $CurrentVersion -v2 $targetStr) -ge 0
         }
 
@@ -166,6 +176,7 @@ function Test-RomsVersionMatch {
         }
 
         # Range Operators
+        if (!$t) { return $false }
         $cmp = Compare-RomsVersions -v1 $CurrentVersion -v2 $targetStr
         switch ($op) {
             ">=" { return $cmp -ge 0 }
