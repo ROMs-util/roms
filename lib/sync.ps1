@@ -25,7 +25,7 @@ function Initialize-Sources {
     if ($shouldInitialize) {
         Write-Log "Initializing hierarchical sources registry..." "INFO"
         
-        # Define the new Industrial Schema
+        # Define the new Ecosystem Schema
         $newRegistry = @{
             preferred_channel = "mainnet"
             sources = @(
