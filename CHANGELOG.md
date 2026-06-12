@@ -5,7 +5,19 @@ All notable changes to the `roms` package manager will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2026-06-11
+## [Unreleased] - 2026-06-12
+### Fixed
+- **Elevation Bridge Recovery**:
+  - Resolved a critical crash in `lib/core.ps1` where relaunch logic failed due to missing `$global:OriginalArgs`.
+  - Hardened `lib/util.ps1` to detect `-EncodedCommand` sessions and correctly recover arguments from the secure JSON tunnel.
+- **Channel Persistence Safety**:
+  - Refactored `Set-RomsChannelStatus` in `lib/source.ps1` to move error logging from the `finally` block to an explicit `catch` block, preventing false-positive failure reports.
+  - Resolved a double-transaction-exit bug that caused inconsistent lock states during channel updates.
+- **UX Consistency**:
+  - Restored the default `list` behavior for the `roms source` command when invoked without a subcommand.
+
+
+## [7e4ffc7] - 2026-06-11
 ### Added
 - **Native SemVer Symbol Support**:
   - **Standard Caret & Tilde:** Implemented native `^` (Major compatibility) and `~` (Patch compatibility) logic in `lib/semver.ps1`, correctly handling pre-1.0 (`0.x.y`) safety boundaries.
@@ -54,7 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.9.0-alpha] - 2026-05-31
 ### Added
-- **Industrial Diagnostic Standardization**:
+- **Standard Diagnostic Standardization**:
   - Ported the refactored `Write-Log` with dual-target formatting (Pretty-RAW for Console, Tight-Inline for machine audits).
   - Enforced **"File-by-File Physical Truth"** for Level 2 (TRACE) logging, ensuring every individual file operation is audited.
   - Implemented **"Anti-Ghost"** diagnostics: all diagnostic logs are now physically verified via `Test-Path` before emission.
@@ -82,7 +94,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [v0.8.0-alpha | c4955ee] - 2026-05-28
 ### Added
 - **Robust SemVer Resolution:** Implemented comprehensive support for Caret (`^`), Tilde (`~`), and version ranges in CLI requests.
-- **Shell-Bridge Hardening:** Implemented industrial-strength quoting and redirection guards to protect special SemVer characters from being mangled during the CMD-to-PowerShell handoff.
+- **Shell-Bridge Hardening:** Implemented professional-grade quoting and redirection guards to protect special SemVer characters from being mangled during the CMD-to-PowerShell handoff.
 
 ## [d3ed04b] - 2026-05-28 
 ### Added
@@ -94,7 +106,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.7.0-alpha | 98e7ec6] - 2026-05-27
 ### Added
-- **SemVer 2.0 Engine:** Implemented an industrial-strength version resolution module (`lib/semver.ps1`) supporting caret (`^`), tilde (`~`), range (`>=`, `<=`, `>`, `<`), and wildcard (`*`) constraints.
+- **SemVer 2.0 Engine:** Implemented a robust version resolution module (`lib/semver.ps1`) supporting caret (`^`), tilde (`~`), range (`>=`, `<=`, `>`, `<`), and wildcard (`*`) constraints.
 - **Best-Match Selection:** Upgraded the registry discovery engine to collect all version candidates and select the highest satisfying version according to SemVer precedence.
 - **Version-Locked Mapping:** Updated the recursive resolver to return explicit versioned identifiers (e.g., `name:version`), ensuring the orchestrator commits to the exact resolution found during the mapping phase.
 

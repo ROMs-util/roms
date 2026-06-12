@@ -50,7 +50,7 @@ if ($global:ROMs_Args) { Write-Log "Raw Args: $($global:ROMs_Args -join ' ')" "R
 # COMMAND ROUTING & MIRRORING (Log Restoration)
 # ---------------------------------------------
 if ($command -eq "install") {
-    # --- INDUSTRIAL GHOST RECONSTRUCTOR (MIRROR PIPE) ---
+    # --- GHOST OUTPUT RECOVERY (MIRROR PIPE) ---
     # Detect if CMD mangled output into a file. If so, we enable MIRRORING
     # to show all logs in the CURRENT terminal bypassing the redirection.
     for ($i = 0; $i -lt $subArgs.Count; $i++) {

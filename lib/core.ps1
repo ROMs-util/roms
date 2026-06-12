@@ -1,7 +1,7 @@
 # core.ps1 - Global Constants, Logging, and Transaction Safety
 
 # ---------------------------------------------
-# GLOBAL CONSTANTS (Industrial Purity)
+# GLOBAL CONSTANTS (Foundational Purity)
 # ---------------------------------------------
 $global:ROMs_ROOT       = "C:\roms"
 $global:ROMs_BIN        = "$global:ROMs_ROOT\bin"
@@ -55,7 +55,7 @@ function Write-Log {
 
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     
-    # 1. INDUSTRIAL DATA PREPARATION (Extract JSON once)
+    # 1. DATA NORMALIZATION (Extract JSON once)
     $isJson = ($Message -match "^\s*\{" -or $Message -match "^\s*\[" -or $Message -match ":\s*\{" -or $Message -match ":\s*\[")
     $prefix = ""
     $jsonObj = $null
@@ -242,7 +242,8 @@ function Confirm-RomsElevation {
         # PREVENTION-FIRST BRIDGE: Pass arguments via Base64 JSON
         # This makes it physically impossible for the shell to interpret '>' or '^' as redirections.
         try {
-            $argsJson = $global:OriginalArgs | ConvertTo-Json -Compress
+            $argsToPass = if ($null -ne $global:ROMs_Args) { $global:ROMs_Args } else { @($args) }
+            $argsJson = ConvertTo-Json -InputObject $argsToPass -Compress
             $argsBase64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($argsJson))
             
             # Build the relaunch command: Decode JSON array and splat into the entry script

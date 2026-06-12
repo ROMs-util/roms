@@ -149,7 +149,7 @@ function Test-RomsVersionMatch {
         # Exact Match (no operator or explicit '=')
         if (!$op -or $op -eq "=") { return (Compare-RomsVersions -v1 $CurrentVersion -v2 $targetStr) -eq 0 }
 
-        # Caret (^) - Compatibility (Industrial Standard)
+        # Caret (^) - Compatibility (Standard Compatibility)
         if ($op -eq "^") {
             if (!$t) { return $false }
             # Same major, and current >= target (General Case)

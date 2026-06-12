@@ -2,7 +2,7 @@
 # Follows MODULARITY_STANDARDS.md and DESIGN_STANDARDS.md
 
 # ---------------------------------------------
-# SESSION IDENTIFICATION (Industrial Tree-Crawl)
+# SESSION IDENTIFICATION (Process Tree Resolution)
 # Finds the highest stable ancestor (Terminal/Shell) that exists 
 # throughout the entire window session. 
 #
@@ -131,6 +131,9 @@ function Invoke-RomsSourceCommand {
 
     Initialize-Sources 
 
+    # Default to 'list' if no subcommand provided (Standard CLI Experience)
+    if ([string]::IsNullOrWhiteSpace($SubCommand)) { $SubCommand = "list" }
+
     switch ($SubCommand) {
         "list" { Show-RomsSourceList }
         "on"   { Set-RomsChannelStatus -Channel $RemainingArgs[0] -Status "on" }
@@ -217,8 +220,9 @@ function Set-RomsChannelStatus {
         } else {
             Write-Log "Channel '$Channel' not found." "ERROR"
         }
-    } finally {
+    } catch {
         Write-Log "Failed to update channel status: $($_.Exception.Message)" "ERROR"
+    } finally {
         Exit-RomsTransaction
     }
 }
