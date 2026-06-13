@@ -54,17 +54,21 @@ if ($command -eq "install") {
     # Detect if CMD mangled output into a file. If so, we enable MIRRORING
     # to show all logs in the CURRENT terminal bypassing the redirection.
     for ($i = 0; $i -lt $subArgs.Count; $i++) {
-        if ($subArgs[$i].EndsWith(":") -and -not $subArgs[$i].StartsWith("-")) {
-            $pkgName = $subArgs[$i].TrimEnd(':')
+        # Detection Trigger: Argument ends with colon OR contains a redirection symbol (fixed by tunnel)
+        if (($subArgs[$i].EndsWith(":") -or $subArgs[$i] -match '[><]') -and -not $subArgs[$i].StartsWith("-")) {
+            $pkgName = if ($subArgs[$i].Contains(":")) { $subArgs[$i].Split(":")[0] } else { $subArgs[$i] }
+            
             $potentialFile = Get-ChildItem -File | 
                 Where-Object { $_.LastWriteTime -gt (Get-Date).AddSeconds(-20) } | 
                 Sort-Object LastWriteTime -Descending | Select-Object -First 1
 
             if ($null -ne $potentialFile) {
-                # 1. Recover coordinate from trash file
-                $verPart = ($potentialFile.Name -split " ")[0]
-                $op = ">"; if ($verPart.StartsWith("=")) { $op = ">="; $verPart = $verPart.Substring(1) }
-                $subArgs[$i] = "${pkgName}:${op}${verPart}"
+                # 1. Recover coordinate from trash file (only if not already recovered by tunnel)
+                if ($subArgs[$i].EndsWith(":")) {
+                    $verPart = ($potentialFile.Name -split " ")[0]
+                    $op = ">"; if ($verPart.StartsWith("=")) { $op = ">="; $verPart = $verPart.Substring(1) }
+                    $subArgs[$i] = "${pkgName}:${op}${verPart}"
+                }
                 
                 # 2. Enable Mirroring: Write-Log will now use Console.Error for all output.
                 $global:Roms_RedirectionActive = $true
@@ -78,17 +82,25 @@ if ($command -eq "install") {
         }
     }
     # Update globals with reconstructed values
-    $global:ROMs_Args = @($command) + $subArgs
+    $flags = @($global:ROMs_Args | Where-Object { $_ -like "-*" })
+    $global:ROMs_Args = @($command) + $subArgs + $flags
+
+    # RE-PARSE VERBOSITY: Ensure recovered flags are applied to the global state IMMEDIATELY
+    $global:VerboseLevel = 0
+    if ($global:ROMs_Args -contains "-vvv") { $global:VerboseLevel = 3 }
+    elseif ($global:ROMs_Args -contains "-vv") { $global:VerboseLevel = 2 }
+    elseif ($global:ROMs_Args -contains "-v" -or ($global:ROMs_Args -contains "--verbose")) { $global:VerboseLevel = 1 }
+    $global:Verbose = ($global:VerboseLevel -gt 0)
 
     if ($subArgs[0] -and (Test-Path $subArgs[0] -PathType Leaf)) {
         $subArgs[0] = (Resolve-Path $subArgs[0]).Path
-        $global:ROMs_Args = @($command) + $subArgs
+        $global:ROMs_Args = @($command) + $subArgs + $flags
     }
-}
+    }
 
-# ---------------------------------------------
-# COMMAND NORMALIZATION
-# ---------------------------------------------
+    # ---------------------------------------------
+    # COMMAND NORMALIZATION
+    # ---------------------------------------------
 if (-not $command -or $command -eq "help") { Show-Help; exit 0 }
 
 # ---------------------------------------------
