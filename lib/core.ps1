@@ -131,7 +131,7 @@ function Write-Log {
 
         # MIRROR PIPE: If redirection is active, standard Write-Host is hidden in the trash file.
         # We mirror to Console.Error with ANSI colors to force visibility in the current terminal.
-        if ($global:Roms_RedirectionActive) {
+        if ($global:Roms_MirrorLogs) {
             # ANSI Escape Codes for high-fidelity terminal coloring
             $ansiColor = switch ($Level) {
                 "ERROR"   { "$([char]27)[31m" } # Red
