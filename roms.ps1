@@ -30,8 +30,10 @@ if (-not (Test-Path $libPath)) {
 # ---------------------------------------------
 # USER-RECOMMENDED TUNNEL BRIDGE: Capture raw input via environment variable.
 $global:ROMs_Args = Get-RomsRawArguments -FallbackArgs @($args)
-$command = $global:ROMs_Args[0]
-$subArgs = @($global:ROMs_Args | Select-Object -Skip 1)
+if ($null -eq $global:ROMs_Args) { $global:ROMs_Args = @() } # Safety Guard
+
+$command = if ($global:ROMs_Args.Count -gt 0) { $global:ROMs_Args[0] } else { $null }
+$subArgs = if ($global:ROMs_Args.Count -gt 1) { @($global:ROMs_Args | Select-Object -Skip 1) } else { @() }
 
 # Handle global flags
 $global:AutoConfirm = ($global:ROMs_Args -contains "-y") -or ($global:ROMs_Args -contains "--yes")
