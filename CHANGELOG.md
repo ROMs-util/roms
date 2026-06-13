@@ -5,7 +5,12 @@ All notable changes to the `roms` package manager will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2026-06-14
+## [Unreleased]
+### Fixed
+- Unified redirection variable to `$global:Roms_MirrorLogs`.
+- Restored flags and verbosity parsing in `roms.ps1` during recovery.
+
+## [16e07e4] - 2026-06-14
 ### Added
 - **Mirror Pipe Standard (Redirection Guard)**:
   - Implemented high-fidelity ANSI-colored Stderr mirroring in `Write-Log`. This allows logs to bypass CMD's standard output redirection during version-range installations (e.g., `pkg:>1.0`) while preserving full UI coloring.

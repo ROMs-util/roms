@@ -30,7 +30,7 @@ function Invoke-EngineCommand {
     if ($Target)      { $finalArgs += $Target }
     if ($Yes)         { $finalArgs += "--yes" }
     if ($NoShim)      { $finalArgs += "--no-shim" }
-    if ($global:Roms_RedirectionActive) { $finalArgs += "--mirror" }
+    if ($global:Roms_MirrorLogs) { $finalArgs += "--mirror" }
 
     # Forward Diagnostic Verbosity ( Propagation)
     if ($global:VerboseLevel -eq 3) { $finalArgs += "-vvv" }

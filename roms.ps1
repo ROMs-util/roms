@@ -71,7 +71,7 @@ if ($command -eq "install") {
                 }
                 
                 # 2. Enable Mirroring: Write-Log will now use Console.Error for all output.
-                $global:Roms_RedirectionActive = $true
+                $global:Roms_MirrorLogs = $true
                 Write-Log "Redirection Detected. Mirroring logs to terminal for $pkgName..." "SUCCESS"
 
                 # SCHEDULE AGGRESSIVE CLEANUP: Wait for current PID and its children to exit.
