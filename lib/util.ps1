@@ -99,15 +99,16 @@ function Get-RomsRawArguments {
             if ($raw -match '^(.*)"$') { $raw = $Matches[1].Trim() }
         }
 
-        # 2. SHELL OPERATOR GUARD: Truncate at first unquoted delimiter (&, |, >, <, ;)
-        # This prevents 'roms pkg && other' from seeing '&& other' as arguments.
+        # 2. SHELL OPERATOR GUARD: Truncate at first unquoted delimiter (&, |, ;)
+        # We allow '>' and '<' to pass through because they are used in SemVer ranges
+        # and are required for the Mirror Pipe redirection detection in the Manager.
         if (-not [string]::IsNullOrWhiteSpace($raw)) {
             $cleanRaw = ""
             $inQuote = $false
             for ($i = 0; $i -lt $raw.Length; $i++) {
                 $char = $raw[$i]
                 if ($char -eq '"') { $inQuote = -not $inQuote }
-                if (-not $inQuote -and ($char -match '[&|><;]')) { break }
+                if (-not $inQuote -and ($char -match '[&|;]')) { break }
                 $cleanRaw += $char
             }
             $raw = $cleanRaw.Trim()

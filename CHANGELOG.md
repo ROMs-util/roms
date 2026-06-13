@@ -5,7 +5,23 @@ All notable changes to the `roms` package manager will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2026-06-12
+## [Unreleased] - 2026-06-14
+### Added
+- **Mirror Pipe Standard (Redirection Guard)**:
+  - Implemented high-fidelity ANSI-colored Stderr mirroring in `Write-Log`. This allows logs to bypass CMD's standard output redirection during version-range installations (e.g., `pkg:>1.0`) while preserving full UI coloring.
+  - Introduced the `--mirror` handshake protocol in `lib/executor.ps1` to automatically synchronize the Engine's logging state with the Manager's redirection detection.
+- **Redirection-Aware Handshake**:
+  - Hardened redirection detection to trigger on both literal operators and tunnel-recovered coordinates, ensuring mirroring activates even when the argument tunnel succeeds.
+
+### Fixed
+- **Ecosystem-Wide Variable Standard**:
+  - Unified redirection state under `$global:Roms_MirrorLogs` across all modules to resolve the "Split Brain" handshake failure.
+- **Argument & Verbosity Persistence**:
+  - Resolved a critical bug where flags (like `-vv`) were stripped during redirection recovery. The router now surgically re-injects flags into the arguments array and re-parses global state immediately.
+- **Parser Operator Guard**:
+  - Modified the Shell Operator Guard in `lib/util.ps1` to allow `>` and `<` symbols to pass through, enabling the Manager to correctly identify and recover from CMD redirection.
+
+## [b998f2e] - 2026-06-12
 ### Fixed
 - **Elevation Bridge Recovery**:
   - Resolved a critical crash in `lib/core.ps1` where relaunch logic failed due to missing `$global:OriginalArgs`.
