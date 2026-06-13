@@ -88,6 +88,9 @@ function Get-RomsResolvedUrl {
 function Get-RomsRawArguments {
     param([array]$FallbackArgs = @())
 
+    # Ensure FallbackArgs is at least an empty array
+    if ($null -eq $FallbackArgs) { $FallbackArgs = @() }
+
     try {
         # 1. TUNNEL RECOVERY: Capture literal input from the protected CMD tunnel.
         $raw = $env:ROMS_RAW_ARGS

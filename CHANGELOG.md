@@ -5,7 +5,13 @@ All notable changes to the `roms` package manager will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [Unreleased] - 2026-06-15
+### Fixed
+- **Argument Parsing Stability**:
+  - Resolved "Cannot index into a null array" crash in `roms.ps1` when invoked without arguments via `roms.bat`.
+  - Hardened `Get-RomsRawArguments` in `lib/util.ps1` to ensure it always returns an array, even when the tunnel or environment fallback is empty.
+
+## [e6c2348]
 ### Fixed
 - Unified redirection variable to `$global:Roms_MirrorLogs`.
 - Restored flags and verbosity parsing in `roms.ps1` during recovery.
