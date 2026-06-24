@@ -33,7 +33,8 @@ $global:ROMs_Args = Get-RomsRawArguments -FallbackArgs @($args)
 if ($null -eq $global:ROMs_Args) { $global:ROMs_Args = @() } # Safety Guard
 
 $command = if ($global:ROMs_Args.Count -gt 0) { $global:ROMs_Args[0] } else { $null }
-$subArgs = if ($global:ROMs_Args.Count -gt 1) { @($global:ROMs_Args | Select-Object -Skip 1) } else { @() }
+# Natively wrap the selection in an array to prevent PowerShell from implicitly unrolling single-element returns into a [String]
+$subArgs = @($global:ROMs_Args | Select-Object -Skip 1)
 
 # Handle global flags
 $global:AutoConfirm = ($global:ROMs_Args -contains "-y") -or ($global:ROMs_Args -contains "--yes")
