@@ -5,13 +5,28 @@ All notable changes to the `roms` package manager will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2026-06-15
+## [Unreleased]
+### Added
+- **Unified Multi-Package Install (`feat#55`)**:
+  - Implemented `Invoke-RomsMultiInstall` in `lib/orchestrator.ps1` as the new primary entry point for `roms install`. All packages in a single command share one staging directory, one dependency map (cross-package deduplication via a shared `$CollectedList`), and one global rollback scope — making `roms install pkg1 pkg2:>1.0 pkg3:1.2.2` a single atomic transaction.
+  - Added `Expand-RomsVersionString` to `lib/semver.ps1`. Normalizes partial user-provided version constraints (`12.2` → `12.2.0`, `5` → `5.0.0`) before SemVer resolution, enabling user-friendly coordinates without requiring strict 3-part syntax.
+
+### Fixed
+- **Multi-Package Resolver Array Unrolling**:
+  - Fixed a critical bug in `lib/resolver.ps1` where `Get-RomsDependencyList` returned a single-element `$CollectedList` that PowerShell silently unrolled into a bare `[String]` through the pipeline. The orchestrator's subsequent `+=` then performed string concatenation instead of array append, producing mangled staging keys (e.g. `helper:2.0.1autofirewall:0.1.0-alpha`) and crashing Phase 2 of multi-package installs.
+  - Applied the **Dual-Defence Array Preservation** pattern: `return ,$CollectedList` (unary comma) in `resolver.ps1` and `$CollectedList = @(Get-RomsDependencyList ...)` (receiver cast) in `orchestrator.ps1`.
+- **Argument Array Unrolling Regression**:
+  - Fixed a critical command routing bug in `roms.ps1` where single-element subcommands (like `list`) were implicitly unrolled into plain strings, causing the parser to extract the first character instead of the full word.
+
+
+## [d6fb7d7] - 2026-06-15
 ### Fixed
 - **Argument Parsing Stability**:
   - Resolved "Cannot index into a null array" crash in `roms.ps1` when invoked without arguments via `roms.bat`.
   - Hardened `Get-RomsRawArguments` in `lib/util.ps1` to ensure it always returns an array, even when the tunnel or environment fallback is empty.
 
-## [e6c2348]
+## [e6c2348] - 026-06-15
+
 ### Fixed
 - Unified redirection variable to `$global:Roms_MirrorLogs`.
 - Restored flags and verbosity parsing in `roms.ps1` during recovery.

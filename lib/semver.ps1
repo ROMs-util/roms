@@ -31,6 +31,35 @@ function Parse-RomsSemVerIdentifier {
 }
 
 # ---------------------------------------------
+# VERSION NORMALIZATION (Constraint Tolerance)
+# Promotes partial version strings to strict SemVer 2.0 before comparison.
+# This allows user-friendly constraints like '>12.2' or '~5' to resolve correctly.
+#
+# WHY: Get-RomsSemVerParts requires M.m.p format. A bare '12.2' (missing patch)
+# would return $null and silently fail all constraint checks. Normalizing to '12.2.0'
+# before parsing gives the correct semantic meaning (any patch is acceptable).
+#
+# IMPORTANT: This MUST only be applied to CONSTRAINT targets, NOT to registry
+# versions. Registry versions must already be strict SemVer 2.0.
+# Returns the normalized string (no-op if already complete).
+# ---------------------------------------------
+function Expand-RomsVersionString {
+    param([Parameter(Mandatory=$true)][string]$Version)
+
+    # Count the number of dot-separated numeric segments (ignore pre-release suffix)
+    # Strip any pre-release or build suffix before counting (e.g., '1.2-alpha' -> '1.2')
+    $corePart = (($Version -split '-')[0] -split '\+')[0]
+    $segments = $corePart.Split('.')
+    
+    switch ($segments.Count) {
+        1 { return "$Version.0.0" }  # e.g., '5'   -> '5.0.0'
+        2 { return "$Version.0"   }  # e.g., '12.2' -> '12.2.0'
+        # 3 or more: already valid SemVer, return as-is
+        default { return $Version }
+    }
+}
+
+# ---------------------------------------------
 # VERSION PARSING (The .NET Rule)
 
 # Parses a SemVer 2.0 string into its component parts: Major, Minor, Patch,
@@ -134,6 +163,10 @@ function Test-RomsVersionMatch {
     if ($Constraint -match "^(\^|~|>=|>|<=|<|=)?\s*(.*)$") {
         $op = $Matches[1]
         $targetStr = $Matches[2]
+        
+        # Constraint Tolerance: Auto-normalize partial versions (e.g., '12.2' -> '12.2.0').
+        # This allows user-friendly coordinates without requiring strict 3-part SemVer.
+        $targetStr = Expand-RomsVersionString -Version $targetStr
         
         $v = Get-RomsSemVerParts -Version $CurrentVersion
         $t = Get-RomsSemVerParts -Version $targetStr
