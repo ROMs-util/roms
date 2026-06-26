@@ -139,10 +139,10 @@ try {
         "select"    { Select-RomsAlternative -CommandName $subArgs[0] -Selection $subArgs[1] }
         "install"   { 
             if (-not $subArgs[0]) { Write-Log "Package name or .rms path required." "ERROR"; break }
-            foreach ($identifier in $subArgs) {
-                if ($identifier.StartsWith("-")) { continue }
-                Invoke-RomsInstall -Identifier $identifier
-            }
+            # Collect all non-flag arguments into a single array for the unified atomic transaction.
+            # Flags (starting with '-') are global options already parsed above; skip them here.
+            $pkgIdentifiers = @($subArgs | Where-Object { -not $_.StartsWith("-") })
+            Invoke-RomsMultiInstall -Identifiers $pkgIdentifiers
         }
         "uninstall" { 
             if (-not $subArgs[0]) { Write-Log "Package name required." "ERROR"; break }

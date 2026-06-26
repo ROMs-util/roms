@@ -1,6 +1,180 @@
 # orchestrator.ps1 - High-level Installation and Uninstallation Lifecycle
 
 # ---------------------------------------------
+# MULTI-PACKAGE INSTALL ORCHESTRATOR (Unified Atomic Transaction)
+# Primary entry point for the 'roms install' command when given 1..N packages.
+# All packages share ONE staging directory, ONE dependency map, and ONE rollback scope.
+#
+# HOW IT WORKS:
+# PHASE 1 (MAP): For each requested identifier, resolve its registry entry and recursively
+#   resolve all its dependencies via Get-RomsDependencyList, passing a shared $CollectedList
+#   to ensure cross-package deduplication (if pkg-a and pkg-b both need lib-c, it installs once).
+# PHASE 2 (ACQUIRE): Download/copy every resolved package into the shared staging directory.
+# PHASE 3 (COMMIT): Install each staged package via the engine in dependency order.
+#   Register alternatives from the engine handshake file.
+# PHASE 4 (ROLLBACK): If ANY single package fails during commit, the entire set of
+#   successfully installed packages in this session is rolled back atomically.
+#
+# PARAM: $Identifiers -- Array of package identifiers, e.g., @("helper", "game:1.2.2", "lib:>3.0")
+# THROWS: Re-throws after rollback so the router can report failure cleanly.
+# ---------------------------------------------
+function Invoke-RomsMultiInstall {
+    param([string[]]$Identifiers)
+
+    if (-not $Identifiers -or $Identifiers.Count -eq 0) {
+        Write-Log "No package identifiers provided." "ERROR"
+        return
+    }
+
+    # PHASE 0: Setup shared transaction workspace
+    $stagingDir = Join-Path $global:ROMs_TEMP "staging"
+    if (Test-Path $stagingDir) {
+        Write-Log "Purging existing staging directory: $stagingDir" "TRACE"
+        Get-ChildItem -Path $stagingDir -Recurse -File | ForEach-Object {
+            Write-Log "Deleting staged file: $($_.FullName)" "TRACE"
+            Remove-Item $_.FullName -Force
+        }
+        Remove-Item $stagingDir -Recurse -Force | Out-Null
+    }
+    New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
+    if (Test-Path $stagingDir) { Write-Log "Created staging directory: $stagingDir" "TRACE" }
+
+    $successfullyInstalled = @()
+
+    Write-Log "Starting unified atomic installation for: $($Identifiers -join ', ')" "INFO"
+
+    try {
+        # PHASE 1: Unified Dependency Mapping
+        # A single $CollectedList is shared across all identifiers to deduplicate shared dependencies.
+        $CollectedList = @()
+
+        foreach ($id in $Identifiers) {
+            if (Test-Path $id) {
+                # Local artifact: resolve to absolute path and add directly.
+                # No registry lookup or dependency resolution needed for local files.
+                $absPath = [System.IO.Path]::GetFullPath($id)
+                if ($CollectedList -notcontains $absPath) {
+                    $CollectedList += $absPath
+                    Write-Log "Local artifact queued: $absPath" "DEBUG"
+                }
+            } else {
+                # Registry package: parse the identifier, find the best-match version,
+                # then recursively resolve its dependency tree into the shared list.
+                $parsed = Parse-RomsSemVerIdentifier -Identifier $id
+                $name   = $parsed.Name
+                $constraint = $parsed.Constraint
+
+                $pkg = Get-RomsRegistryPackage -Name $name -Constraint $constraint
+                if (!$pkg) { throw "Abort: Package '$name' (Constraint: '$constraint') not found in registry." }
+
+                Write-Log "Resolved '$name' to v$($pkg.version) from registry." "DEBUG"
+
+                # Recursively resolve sub-dependencies, sharing the accumulated list.
+                # @() wrapping guarantees $CollectedList stays an array even if the
+                # resolver returns a single-element result through the pipeline.
+                if ($pkg.dependencies) {
+                    $CollectedList = @(Get-RomsDependencyList `
+                        -Dependencies $pkg.dependencies `
+                        -CollectedList $CollectedList)
+                }
+
+                # Append this top-level package (version-locked) if not already in the list.
+                $versionedId = "$($pkg.name):$($pkg.version)"
+                $alreadyIn = $false
+                foreach ($item in $CollectedList) {
+                    if ($item -eq $pkg.name -or $item.StartsWith("$($pkg.name):")) {
+                        $alreadyIn = $true; break
+                    }
+                }
+                if (-not $alreadyIn) {
+                    $CollectedList += $versionedId
+                    Write-Log "Queued for install: $versionedId" "TRACE"
+                }
+            }
+        }
+
+        $requiredPackages = $CollectedList
+        Write-Log "Unified dependency map: $($requiredPackages -join ', ')" "INFO"
+
+        # PHASE 2: Unified Acquisition (Download / Copy all packages to staging)
+        $stagedFiles = @{}
+        foreach ($pkgId in $requiredPackages) {
+            $stagedPath = Stage-Package -Identifier $pkgId -StagingDir $stagingDir
+            $stagedFiles[$pkgId] = $stagedPath
+            if (Test-Path $stagedPath) {
+                Write-Log "Staged artifact verified: $(Split-Path $stagedPath -Leaf)" "TRACE"
+            }
+        }
+        Write-Log "Acquisition complete. All required files staged and verified." "SUCCESS"
+
+        # PHASE 3: Unified Commit (Install all packages in dependency order)
+        foreach ($pkgId in $requiredPackages) {
+            Write-Log "Processing: $pkgId" "INFO"
+            $localPath = $stagedFiles[$pkgId]
+
+            # Clean any leftover handshake from a previous iteration
+            $handshakeFile = Join-Path $global:ROMs_TEMP "handshake.json"
+            if (Test-Path $handshakeFile) { Remove-Item $handshakeFile -Force }
+
+            Invoke-EngineCommand -Command "install" -Target $localPath `
+                -Yes:$global:AutoConfirm -ShowVerbose:($global:VerboseLevel -ge 1) -NoShim
+
+            # Track clean name for rollback (strip constraint suffix or derive from local path)
+            $cleanName = $pkgId.Split(':')[0]
+            if (Test-Path $pkgId) { $cleanName = [System.IO.Path]::GetFileNameWithoutExtension($pkgId) }
+            $successfullyInstalled += $cleanName
+
+            # Process engine handshake for alternatives registration
+            if (Test-Path $handshakeFile) {
+                Write-Log "Processing engine handshake for alternatives..." "TRACE"
+                $rawHandshake = Get-Content $handshakeFile -Raw
+                if ($rawHandshake) {
+                    Write-Log "Handshake Data: $rawHandshake" "RAW"
+                    $meta = $rawHandshake | ConvertFrom-Json
+                    $packageId = if ($meta.packageId) { $meta.packageId } else { $meta.name }
+                    $priority  = if ($null -ne $meta.priority) { [int]$meta.priority } else { 100 }
+                    Register-Alternative -CommandName $meta.commandName `
+                        -PackageId $packageId `
+                        -ExecutablePath $meta.primaryExecutable `
+                        -Priority $priority
+                    Remove-Item $handshakeFile -Force
+                }
+            }
+        }
+
+        Write-Log "Unified atomic installation of [$($Identifiers -join ', ')] complete." "SUCCESS"
+
+    } catch {
+        Write-Log "CRITICAL FAILURE during multi-install: $($_.Exception.Message)" "ERROR"
+
+        # PHASE 4: Transactional Rollback
+        # Any package committed before the failure is reversed, restoring system cleanliness.
+        if ($successfullyInstalled.Count -gt 0) {
+            Write-Log "Initiating global rollback for $($successfullyInstalled.Count) committed package(s)..." "WARN"
+            foreach ($pkgToRollback in ($successfullyInstalled | Select-Object -Unique)) {
+                try {
+                    Invoke-RomsUninstall -Name $pkgToRollback
+                } catch {
+                    Write-Log "Rollback failed for '${pkgToRollback}': $($_.Exception.Message)" "ERROR"
+                }
+            }
+        }
+        Write-Log "System restored to pre-install state." "WARN"
+
+    } finally {
+        # Cleanup shared staging directory
+        if (Test-Path $stagingDir) {
+            Write-Log "Cleaning up staging directory: $stagingDir" "TRACE"
+            Get-ChildItem -Path $stagingDir -Recurse -File | ForEach-Object {
+                Write-Log "Deleting staged file: $($_.FullName)" "TRACE"
+                Remove-Item $_.FullName -Force
+            }
+            Remove-Item $stagingDir -Recurse -Force | Out-Null
+        }
+    }
+}
+
+# ---------------------------------------------
 # INSTALL ORCHESTRATOR (3-Phase Atomic Install)
 # Main install flow: Dependency Mapping -> Acquisition -> Commit.
 #
@@ -13,8 +187,11 @@
 #
 # ERROR HANDLING: Rolls back $successfullyInstalled on failure via Unregister-Alternative.
 # THROWS: If package not found in registry, or engine command fails.
+# NOTE: This function is preserved for internal use and backward compatibility.
+#       The public-facing entry point is Invoke-RomsMultiInstall.
 # ---------------------------------------------
 function Invoke-RomsInstall {
+
     param([string]$Identifier)
 
     # 1. Setup Staging Environment
