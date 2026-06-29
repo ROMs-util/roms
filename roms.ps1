@@ -79,7 +79,8 @@ if ($command -eq "install") {
 
                 # SCHEDULE AGGRESSIVE CLEANUP: Wait for current PID and its children to exit.
                 $cleanupPath = $potentialFile.FullName
-                $cleanupScript = "while (Get-Process -Id $PID -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 500 }; if (Test-Path '$cleanupPath') { Remove-Item '$cleanupPath' -Force }"
+                $safePath = $cleanupPath -replace "'", "''"
+                $cleanupScript = "while (Get-Process -Id $PID -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 500 }; if (Test-Path '$safePath') { Remove-Item '$safePath' -Force }"
                 Start-Process powershell -WindowStyle Hidden -ArgumentList "-ExecutionPolicy Bypass", "-Command", $cleanupScript
             }
         }

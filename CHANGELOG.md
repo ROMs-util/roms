@@ -6,12 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Security Fixed
+- **[sec#1-C1] Cleanup Script Injection**: `roms.ps1` escaped single quotes in `$cleanupPath` before embedding in `powershell -Command` string, preventing command injection via malicious staging filenames containing `'` and shell operators. Added `$safePath = $cleanupPath -replace "'", "''"` before constructing the cleanup script.
+
+## [6d80d97]
 ### Added
 - **Unified Multi-Package Install (`feat#55`)**:
   - Implemented `Invoke-RomsMultiInstall` in `lib/orchestrator.ps1` as the new primary entry point for `roms install`. All packages in a single command share one staging directory, one dependency map (cross-package deduplication via a shared `$CollectedList`), and one global rollback scope — making `roms install pkg1 pkg2:>1.0 pkg3:1.2.2` a single atomic transaction.
   - Added `Expand-RomsVersionString` to `lib/semver.ps1`. Normalizes partial user-provided version constraints (`12.2` → `12.2.0`, `5` → `5.0.0`) before SemVer resolution, enabling user-friendly coordinates without requiring strict 3-part syntax.
 
-### Fixed
+### Fixed - 2026-06-27
 - **Multi-Package Resolver Array Unrolling**:
   - Fixed a critical bug in `lib/resolver.ps1` where `Get-RomsDependencyList` returned a single-element `$CollectedList` that PowerShell silently unrolled into a bare `[String]` through the pipeline. The orchestrator's subsequent `+=` then performed string concatenation instead of array append, producing mangled staging keys (e.g. `helper:2.0.1autofirewall:0.1.0-alpha`) and crashing Phase 2 of multi-package installs.
   - Applied the **Dual-Defence Array Preservation** pattern: `return ,$CollectedList` (unary comma) in `resolver.ps1` and `$CollectedList = @(Get-RomsDependencyList ...)` (receiver cast) in `orchestrator.ps1`.
