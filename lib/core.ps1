@@ -32,6 +32,17 @@ $global:ROMs_ARCH = if ($PSVersionTable.PSVersion.Major -ge 6) {
     $env:PROCESSOR_ARCHITECTURE
 }
 
+# Enforce TLS 1.2 and TLS 1.3 (with fallback for legacy environments)
+try {
+    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12 -bor [System.Net.SecurityProtocolType]::Tls13
+} catch {
+    try {
+        [System.Net.ServicePointManager]::SecurityProtocol = 3072 -bor 12288
+    } catch {
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+    }
+}
+
 # ---------------------------------------------
 # LOGGING SYSTEM
 # Writes timestamped log entries to console (color-coded) and master log file.
