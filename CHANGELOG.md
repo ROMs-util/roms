@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Security Fixed
+- **TLS Enforcement & HTTP Blocking (H1)**: `lib/core.ps1`, `lib/util.ps1`, `lib/orchestrator.ps1`, `lib/sync.ps1`, `lib/bootstrap.ps1` — Enforced TLS 1.2 and TLS 1.3 globally for the PowerShell session. Added `Assert-RomsSecureUrl` to block unencrypted remote `http://` downloads while permitting loopback/localhost testing.
+
+## [6d80d97]
 ### Added
 - **Unified Multi-Package Install (`feat#55`)**:
   - Implemented `Invoke-RomsMultiInstall` in `lib/orchestrator.ps1` as the new primary entry point for `roms install`. All packages in a single command share one staging directory, one dependency map (cross-package deduplication via a shared `$CollectedList`), and one global rollback scope — making `roms install pkg1 pkg2:>1.0 pkg3:1.2.2` a single atomic transaction.

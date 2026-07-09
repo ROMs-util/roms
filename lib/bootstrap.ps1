@@ -115,6 +115,7 @@ function Initialize-RomsEngine {
         if ($pkg) {
             $url = Get-RomsResolvedUrl -Template $pkg.downloadUrl -Package $pkg
             Write-Log "Downloading engine from registry: $url" "INFO"
+            Assert-RomsSecureUrl -Url $url
             Invoke-RestMethod -Uri $url -OutFile $stagedEngine
             if (Test-Path $stagedEngine) {
                 Write-Log "Standalone Engine artifact staged: $(Split-Path $stagedEngine -Leaf)" "TRACE"
@@ -130,6 +131,7 @@ function Initialize-RomsEngine {
     if (-not $success) {
         Write-Log "Registry unavailable. Falling back to Dynamic GitHub Recovery..." "WARN"
         try {
+            Assert-RomsSecureUrl -Url $global:ROMs_RECOVERY
             $release = Invoke-RestMethod -Uri $global:ROMs_RECOVERY
             $sysArch = $global:ROMs_ARCH.ToLower()
             
@@ -142,6 +144,7 @@ function Initialize-RomsEngine {
 
             if ($asset) {
                 Write-Log "Found recovery asset: $($asset.name)" "INFO"
+                Assert-RomsSecureUrl -Url $asset.browser_download_url
                 Invoke-RestMethod -Uri $asset.browser_download_url -OutFile $stagedEngine
                 if (Test-Path $stagedEngine) {
                     Write-Log "Standalone Engine artifact staged: $(Split-Path $stagedEngine -Leaf)" "TRACE"

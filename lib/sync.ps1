@@ -95,6 +95,7 @@ function Update-Registry {
 
             try {
                 if ($targetUrl.StartsWith("http")) {
+                    Assert-RomsSecureUrl -Url $targetUrl
                     Invoke-RestMethod -Uri $targetUrl -OutFile $cacheFile
                 } else {
                     # Support local paths for testing
