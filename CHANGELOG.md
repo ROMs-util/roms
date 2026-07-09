@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Security Fixed
+- **Cleanup Script Injection (C1)**: `roms.ps1` — Escaped single quotes in `$cleanupPath` before embedding it in the background PowerShell cleanup command, preventing arbitrary script execution when staging filenames contain quotes and shell operators.
+
+## [0056be7]
+### Security Fixed
 - **TLS Enforcement & HTTP Blocking (H1)**: `lib/core.ps1`, `lib/util.ps1`, `lib/orchestrator.ps1`, `lib/sync.ps1`, `lib/bootstrap.ps1` — Enforced TLS 1.2 and TLS 1.3 globally for the PowerShell session. Added `Assert-RomsSecureUrl` to block unencrypted remote `http://` downloads while permitting loopback/localhost testing.
 
 ## [6d80d97]
