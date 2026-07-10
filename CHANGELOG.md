@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Security Fixed
+- **Shim Path Injection (C2)**: `lib/alternatives.ps1` — Six-layer industrial-grade protection in `Manage-Shim` for `.bat` shim construction: 
+  - path canonicalization via `[System.IO.Path]::GetFullPath()` to resolve `..\` traversal, 
+  - absolute-path re-validation after canonicalization (`^[A-Za-z]:\\|^\\`), 
+  - extension allowlist (`.exe`, `.cmd`, `.bat`, `.ps1` only), 
+  - file-existence check via `[System.IO.File]::Exists()`, 
+  - batch metachar rejection (`[&|<>`;]`), 
+  - internal quote doubling before embedding in shim file. Also removed erroneous `call` keyword from non-.ps1 branch.
+
+## [5d43a19]
+### Security Fixed
 - **Cleanup Script Injection (C1)**: `roms.ps1` — Escaped single quotes in `$cleanupPath` before embedding it in the background PowerShell cleanup command, preventing arbitrary script execution when staging filenames contain quotes and shell operators.
 
 ## [0056be7]
