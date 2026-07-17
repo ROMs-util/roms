@@ -5,14 +5,20 @@ All notable changes to the `roms` package manager will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+
 ## [Unreleased]
 ### Security Fixed
-- **Shim Path Injection (C2)**: `lib/alternatives.ps1` — Six-layer industrial-grade protection in `Manage-Shim` for `.bat` shim construction: 
-  - path canonicalization via `[System.IO.Path]::GetFullPath()` to resolve `..\` traversal, 
-  - absolute-path re-validation after canonicalization (`^[A-Za-z]:\\|^\\`), 
-  - extension allowlist (`.exe`, `.cmd`, `.bat`, `.ps1` only), 
-  - file-existence check via `[System.IO.File]::Exists()`, 
-  - batch metachar rejection (`[&|<>`;]`), 
+- **Sub-Dependency Version Not Verified (M1)**: `lib/resolver.ps1` — `Get-RomsDependencyList` now reads the installed version from package metadata and verifies it satisfies the version constraint before skipping installation. Previously, the resolver only checked file existence (`[System.IO.File]::Exists($metaPath)`) and skipped any installed dependency regardless of whether the installed version satisfied the required constraint (e.g., `^1.0.0` on a `v2.0.1` installation would be incorrectly skipped). Fix includes try/catch around metadata read and null-check on version field for safe fallthrough on malformed metadata.
+
+## [bd775f0]
+### Security Fixed
+- **Shim Path Injection (C2)**: `lib/alternatives.ps1` — Six-layer industrial-grade protection in `Manage-Shim` for `.bat` shim construction:
+  - path canonicalization via `[System.IO.Path]::GetFullPath()` to resolve `..\` traversal,
+  - absolute-path re-validation after canonicalization (`^[A-Za-z]:\\|^\\`),
+  - extension allowlist (`.exe`, `.cmd`, `.bat`, `.ps1` only),
+  - file-existence check via `[System.IO.File]::Exists()`,
+  - batch metachar rejection (`[&|<>`;]`),
   - internal quote doubling before embedding in shim file. Also removed erroneous `call` keyword from non-.ps1 branch.
 
 ## [5d43a19]
