@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Security Fixed
+- **Unsanitized Channel Name Logging & Session State (M3)**: `lib/source.ps1` — Validated `$sessionData.channel` read from session JSON against `^[a-zA-Z0-9_\-]+$` in `Get-RomsActiveChannel`, preventing log forgery and injection attacks from corrupted disk state. Added strict pattern matching to `Set-RomsChannelStatus` and `Set-RomsPreferredChannel`.
+
+## [1ba9497]
+### Security Fixed
 - **Path Traversal in Channel Filename (M2)**: `lib/sync.ps1` — Validated `$chan.file` against path separators (`/`, `\`) and parent traversal (`..`) sequences before constructing download URLs in `Update-Registry`. Rejects invalid/malicious channel filenames with an error log entry while safely continuing synchronization for remaining valid channels.
 
 ## [88cec64]
