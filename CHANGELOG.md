@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Security Fixed
+- **Unsanitized Command Name in Alternatives (L1)**: `lib/alternatives.ps1` — Validated `$CommandName` against `^[a-zA-Z0-9_\-]+$` in `Manage-Shim` and `Register-Alternative` before constructing shim path `C:\roms\bin\$CommandName.bat`, preventing path traversal (`..`) or file creation/deletion outside `C:\roms\bin`.
+
+## [1ee3597]
+### Security Fixed
 - **Unsanitized Channel Name Logging & Session State (M3)**: `lib/source.ps1` — Validated `$sessionData.channel` read from session JSON against `^[a-zA-Z0-9_\-]+$` in `Get-RomsActiveChannel`, preventing log forgery and injection attacks from corrupted disk state. Added strict pattern matching to `Set-RomsChannelStatus` and `Set-RomsPreferredChannel`.
 
 ## [1ba9497]
