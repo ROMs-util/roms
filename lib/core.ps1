@@ -186,32 +186,35 @@ function Enter-RomsTransaction {
         New-Item -ItemType Directory -Path $global:ROMs_TEMP -Force | Out-Null
     }
 
-    if (Test-Path $global:ROMs_LOCK) {
-        try {
-            $lockInfo = Get-Content $global:ROMs_LOCK | ConvertFrom-Json
-            $procId = $lockInfo.pid
-            
-            # FIX: If the lock belongs to US, we already have it (Re-entrant safety)
-            if ($procId -eq $PID) {
-                $script:RomsLockAcquired = $true
-                return 
-            }
-            
-            if (Get-Process -Id $procId -ErrorAction SilentlyContinue) {
-                Write-Log "System Busy: Another ROMs operation is running (PID: $procId)." "ERROR"
-                exit 1
-            } else {
-                Write-Log "Stale lock found from PID $procId. Cleaning up..." "WARN"
-                Remove-Item $global:ROMs_LOCK -Force
-            }
-        } catch {
-            Remove-Item $global:ROMs_LOCK -Force
-        }
+    # Re-entrant safety: already acquired by this PID
+    if ($script:ROMs_LockRefCount -and $script:ROMs_LockRefCount -gt 0 -and $script:ROMs_LockPID -eq $PID) {
+        $script:ROMs_LockRefCount++
+        $script:RomsLockAcquired = $true
+        return $true
     }
 
-    $lockData = @{ pid = $PID; startTime = (Get-Date -Format "o") }
+    # Acquire atomic .NET named mutex (100ms timeout)
+    try {
+        $mutex = New-Object System.Threading.Mutex($false, 'Global\ROMs_Transaction')
+        $acquired = $mutex.WaitOne(100)
+        if (-not $acquired) {
+            $mutex.Dispose()
+            Write-Log "System Busy: Another ROMs operation is running." "ERROR"
+            return $false
+        }
+        $script:ROMs_Mutex = $mutex
+    } catch {
+        Write-Log "Could not acquire transaction mutex: $($_.Exception.Message)" "ERROR"
+        return $false
+    }
+
+    # Write lock file as marker (mutex is the real synchronization)
+    $lockData = @{ pid = $PID; startTime = (Get-Date -Format "o"); refCount = 1 }
     $lockData | ConvertTo-Json | Out-File -FilePath $global:ROMs_LOCK -Encoding utf8
+    $script:ROMs_LockPID = $PID
+    $script:ROMs_LockRefCount = 1
     $script:RomsLockAcquired = $true
+    return $true
 }
 
 # ---------------------------------------------
@@ -224,17 +227,22 @@ function Enter-RomsTransaction {
 # 3. Deletes the lock file to allow other operations to proceed.
 # ---------------------------------------------
 function Exit-RomsTransaction {
-    if ($script:RomsLockAcquired -and (Test-Path $global:ROMs_LOCK)) {
-        try {
-            $lockInfo = Get-Content $global:ROMs_LOCK | ConvertFrom-Json
-            if ($lockInfo.pid -eq $PID) {
-                Remove-Item $global:ROMs_LOCK -Force
+    if ($script:RomsLockAcquired) {
+        if ($script:ROMs_LockRefCount -and $script:ROMs_LockRefCount -gt 1) {
+            $script:ROMs_LockRefCount--
+        } else {
+            # Last reference — release mutex
+            $script:ROMs_LockRefCount = 0
+            $script:RomsLockAcquired = $false
+            if ($script:ROMs_Mutex) {
+                try { $script:ROMs_Mutex.ReleaseMutex() } catch {}
+                $script:ROMs_Mutex.Dispose()
+                $script:ROMs_Mutex = $null
             }
-        } catch {
-            # Fallback if file is corrupted
-            Remove-Item $global:ROMs_LOCK -Force
+            if (Test-Path $global:ROMs_LOCK) {
+                Remove-Item $global:ROMs_LOCK -Force -ErrorAction SilentlyContinue
+            }
         }
-        $script:RomsLockAcquired = $false
     }
 }
 
