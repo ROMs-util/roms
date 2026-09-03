@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Security Fixed
+- **Path Traversal in Channel Filename (M2)**: `lib/sync.ps1` — Validated `$chan.file` against path separators (`/`, `\`) and parent traversal (`..`) sequences before constructing download URLs in `Update-Registry`. Rejects invalid/malicious channel filenames with an error log entry while safely continuing synchronization for remaining valid channels.
+
+## [88cec64]
+### Security Fixed
 - **Lock File TOCTOU Race (H2)**: `lib/core.ps1` — Replaced the file-based PID lock (which had a time-of-check-to-time-of-use vulnerability allowing two processes to race and both acquire the lock simultaneously) with a kernel-level `.NET Mutex` (`Global\ROMs_Transaction`). The mutex provides atomic OS-granted acquisition via `WaitOne(5000)`, reference-counted re-entrancy, automatic OS cleanup on process crash, and eliminates the lock file entirely.
 
 ## [fce4157]
