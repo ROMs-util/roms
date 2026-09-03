@@ -56,6 +56,11 @@ function Manage-Shim {
         [switch]$Remove
     )
 
+    if ($CommandName -notmatch '^[a-zA-Z0-9_\-]+$') {
+        Write-Log "Invalid command name: '$CommandName'. Only alphanumeric characters, hyphens, and underscores are permitted." "ERROR"
+        return
+    }
+
     $shimPath = Join-Path $global:ROMs_BIN "$CommandName.bat"
 
     if ($Remove) {
@@ -151,6 +156,11 @@ function Register-Alternative {
         [Parameter(Mandatory=$true)][string]$ExecutablePath,
         [int]$Priority = 100
     )
+
+    if ($CommandName -notmatch '^[a-zA-Z0-9_\-]+$') {
+        Write-Log "Invalid command name: '$CommandName'. Only alphanumeric characters, hyphens, and underscores are permitted." "ERROR"
+        return
+    }
 
     Write-Log "Registering alternative for '$CommandName' from package '$PackageId'..." "INFO"
     
