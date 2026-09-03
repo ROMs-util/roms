@@ -88,6 +88,11 @@ function Update-Registry {
                 Write-Log "Temporary Activation: $($s.name).$chanName (Reason: Session Picked)" "SUCCESS"
             }
 
+            if ($chan.file -match '[\\/]' -or $chan.file -like "*..*") {
+                Write-Log "Invalid channel file name in source '$($s.name)': '$($chan.file)'. Path separators and parent traversal forbidden." "ERROR"
+                continue
+            }
+
             $cacheFile = Join-Path $global:ROMs_CACHE "$($s.name).$chanName.index.json"
             $targetUrl = if ($s.base_url.EndsWith("/")) { "$($s.base_url)$($chan.file)" } else { "$($s.base_url)/$($chan.file)" }
 
