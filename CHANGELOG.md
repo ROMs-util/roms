@@ -5,9 +5,11 @@ All notable changes to the `roms` package manager will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-
-
 ## [Unreleased]
+### Security Fixed
+- **Lock File TOCTOU Race (H2)**: `lib/core.ps1` — Replaced the file-based PID lock (which had a time-of-check-to-time-of-use vulnerability allowing two processes to race and both acquire the lock simultaneously) with a kernel-level `.NET Mutex` (`Global\ROMs_Transaction`). The mutex provides atomic OS-granted acquisition via `WaitOne(5000)`, reference-counted re-entrancy, automatic OS cleanup on process crash, and eliminates the lock file entirely.
+
+## [fce4157]
 ### Security Fixed
 - **Sub-Dependency Version Not Verified (M1)**: `lib/resolver.ps1` — `Get-RomsDependencyList` now reads the installed version from package metadata and verifies it satisfies the version constraint before skipping installation. Previously, the resolver only checked file existence (`[System.IO.File]::Exists($metaPath)`) and skipped any installed dependency regardless of whether the installed version satisfied the required constraint (e.g., `^1.0.0` on a `v2.0.1` installation would be incorrectly skipped). Fix includes try/catch around metadata read and null-check on version field for safe fallthrough on malformed metadata.
 
