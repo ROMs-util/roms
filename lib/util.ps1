@@ -80,6 +80,29 @@ function Get-RomsResolvedUrl {
 }
 
 # ---------------------------------------------
+# Assert-RomsSecureUrl
+# Enforces HTTPS for all web requests to prevent MITM attacks.
+# Allows plain HTTP ONLY for loopback/localhost testing.
+# ---------------------------------------------
+function Assert-RomsSecureUrl {
+    param([Parameter(Mandatory=$true)][string]$Url)
+
+    if ($Url -like "http:*") {
+        try {
+            $uri = [System.Uri]$Url
+            if ($uri.Scheme -eq "http") {
+                $hostName = $uri.Host
+                if ($hostName -ne "localhost" -and $hostName -ne "127.0.0.1" -and $hostName -ne "[::1]") {
+                    throw "Insecure download URL blocked: '$Url'. Only HTTPS is permitted (TLS Enforcement)."
+                }
+            }
+        } catch {
+            throw "Invalid or insecure download URL: '$Url'. $_"
+        }
+    }
+}
+
+# ---------------------------------------------
 # ARGUMENT RECOVERY (Raw Input Recovery)
 # Captures arguments from the environment tunnel or raw command line.
 # Preserves symbols like '>', '^', and '~' by parsing the raw string.

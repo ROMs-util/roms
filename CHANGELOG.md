@@ -6,6 +6,44 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Security Fixed
+- **Unsanitized Command Name in Alternatives (L1)**: `lib/alternatives.ps1` — Validated `$CommandName` against `^[a-zA-Z0-9_\-]+$` in `Manage-Shim` and `Register-Alternative` before constructing shim path `C:\roms\bin\$CommandName.bat`, preventing path traversal (`..`) or file creation/deletion outside `C:\roms\bin`.
+
+## [1ee3597]
+### Security Fixed
+- **Unsanitized Channel Name Logging & Session State (M3)**: `lib/source.ps1` — Validated `$sessionData.channel` read from session JSON against `^[a-zA-Z0-9_\-]+$` in `Get-RomsActiveChannel`, preventing log forgery and injection attacks from corrupted disk state. Added strict pattern matching to `Set-RomsChannelStatus` and `Set-RomsPreferredChannel`.
+
+## [1ba9497]
+### Security Fixed
+- **Path Traversal in Channel Filename (M2)**: `lib/sync.ps1` — Validated `$chan.file` against path separators (`/`, `\`) and parent traversal (`..`) sequences before constructing download URLs in `Update-Registry`. Rejects invalid/malicious channel filenames with an error log entry while safely continuing synchronization for remaining valid channels.
+
+## [88cec64]
+### Security Fixed
+- **Lock File TOCTOU Race (H2)**: `lib/core.ps1` — Replaced the file-based PID lock (which had a time-of-check-to-time-of-use vulnerability allowing two processes to race and both acquire the lock simultaneously) with a kernel-level `.NET Mutex` (`Global\ROMs_Transaction`). The mutex provides atomic OS-granted acquisition via `WaitOne(5000)`, reference-counted re-entrancy, automatic OS cleanup on process crash, and eliminates the lock file entirely.
+
+## [fce4157]
+### Security Fixed
+- **Sub-Dependency Version Not Verified (M1)**: `lib/resolver.ps1` — `Get-RomsDependencyList` now reads the installed version from package metadata and verifies it satisfies the version constraint before skipping installation. Previously, the resolver only checked file existence (`[System.IO.File]::Exists($metaPath)`) and skipped any installed dependency regardless of whether the installed version satisfied the required constraint (e.g., `^1.0.0` on a `v2.0.1` installation would be incorrectly skipped). Fix includes try/catch around metadata read and null-check on version field for safe fallthrough on malformed metadata.
+
+## [bd775f0]
+### Security Fixed
+- **Shim Path Injection (C2)**: `lib/alternatives.ps1` — Six-layer industrial-grade protection in `Manage-Shim` for `.bat` shim construction:
+  - path canonicalization via `[System.IO.Path]::GetFullPath()` to resolve `..\` traversal,
+  - absolute-path re-validation after canonicalization (`^[A-Za-z]:\\|^\\`),
+  - extension allowlist (`.exe`, `.cmd`, `.bat`, `.ps1` only),
+  - file-existence check via `[System.IO.File]::Exists()`,
+  - batch metachar rejection (`[&|<>`;]`),
+  - internal quote doubling before embedding in shim file. Also removed erroneous `call` keyword from non-.ps1 branch.
+
+## [5d43a19]
+### Security Fixed
+- **Cleanup Script Injection (C1)**: `roms.ps1` — Escaped single quotes in `$cleanupPath` before embedding it in the background PowerShell cleanup command, preventing arbitrary script execution when staging filenames contain quotes and shell operators.
+
+## [0056be7]
+### Security Fixed
+- **TLS Enforcement & HTTP Blocking (H1)**: `lib/core.ps1`, `lib/util.ps1`, `lib/orchestrator.ps1`, `lib/sync.ps1`, `lib/bootstrap.ps1` — Enforced TLS 1.2 and TLS 1.3 globally for the PowerShell session. Added `Assert-RomsSecureUrl` to block unencrypted remote `http://` downloads while permitting loopback/localhost testing.
+
+## [6d80d97]
 ### Added
 - **Unified Multi-Package Install (`feat#55`)**:
   - Implemented `Invoke-RomsMultiInstall` in `lib/orchestrator.ps1` as the new primary entry point for `roms install`. All packages in a single command share one staging directory, one dependency map (cross-package deduplication via a shared `$CollectedList`), and one global rollback scope — making `roms install pkg1 pkg2:>1.0 pkg3:1.2.2` a single atomic transaction.
