@@ -56,11 +56,6 @@ function Manage-Shim {
         [switch]$Remove
     )
 
-    if ($CommandName -notmatch '^[a-zA-Z0-9_\-]+$') {
-        Write-Log "Invalid command name: '$CommandName'. Only alphanumeric characters, hyphens, and underscores are permitted." "ERROR"
-        return
-    }
-
     $shimPath = Join-Path $global:ROMs_BIN "$CommandName.bat"
 
     if ($Remove) {
@@ -76,53 +71,20 @@ function Manage-Shim {
 
     if (-not $ExecutablePath) { return }
 
+    if ($ExecutablePath -match '[&<>|"]') {
+        throw "Invalid executable path: contains forbidden characters."
+    }
+
     Write-Log "Creating shim: $CommandName -> $ExecutablePath" "INFO"
-
+    
     # ---------------------------------------------
-    # INPUT SANITIZATION (Industrial-Grade)
+    # SHIM CONSTRUCTION 
     # ---------------------------------------------
-    # Step 1 — Canonicalize the path: resolve .\. and ..\ segments so path
-    # traversal attacks like "C:\Windows\..\evil\calc.exe" become detectable.
-    # GetFullPath also validates path structure (throws on illegal chars).
-    try {
-        $ExecutablePath = [System.IO.Path]::GetFullPath($ExecutablePath)
-    } catch {
-        Write-Log "ERROR: Invalid executable path: $ExecutablePath" "ERROR"
-        return
-    }
-
-    # Step 2 — Confirm it is still an absolute path after canonicalization.
-    if ($ExecutablePath -notmatch '^[A-Za-z]:\\|^\\') {
-        Write-Log "ERROR: Executable path is not absolute: $ExecutablePath" "ERROR"
-        return
-    }
-
-    # Step 3 — Extension allowlist: only safe types get a shim.
-    $safeExtensions = @('.exe', '.cmd', '.bat', '.ps1')
-    $ext = [System.IO.Path]::GetExtension($ExecutablePath).ToLower()
-    if ($ext -notin $safeExtensions) {
-        Write-Log "ERROR: Unsupported shim extension '$ext' for: $ExecutablePath" "ERROR"
-        return
-    }
-
-    # Step 4 — Confirm the target file actually exists.
-    if (-not [System.IO.File]::Exists($ExecutablePath)) {
-        Write-Log "ERROR: Executable not found: $ExecutablePath" "ERROR"
-        return
-    }
-
-    # Step 5 — Reject batch shell metacharacters.
-    if ($ExecutablePath -match '[&|<>`;]') {
-        Write-Log "ERROR: Executable path contains invalid characters: $ExecutablePath" "ERROR"
-        return
-    }
-
-    # Step 6 — Escape internal double-quotes by doubling.
-    $safePath = $ExecutablePath -replace '"', '""'
+    # Logic: If target is a PowerShell script, use 'powershell -File'
     $batContent = if ($ExecutablePath.ToLower().EndsWith(".ps1")) {
-        "@echo off`r`npowershell -ExecutionPolicy Bypass -File `"$safePath`" %*"
+        "@echo off`r`npowershell -ExecutionPolicy Bypass -File `"$ExecutablePath`" %*"
     } else {
-        "@echo off`r`n`"$safePath`" %*"
+        "@echo off`r`n`"$ExecutablePath`" %*"
     }
 
     try {
@@ -156,11 +118,6 @@ function Register-Alternative {
         [Parameter(Mandatory=$true)][string]$ExecutablePath,
         [int]$Priority = 100
     )
-
-    if ($CommandName -notmatch '^[a-zA-Z0-9_\-]+$') {
-        Write-Log "Invalid command name: '$CommandName'. Only alphanumeric characters, hyphens, and underscores are permitted." "ERROR"
-        return
-    }
 
     Write-Log "Registering alternative for '$CommandName' from package '$PackageId'..." "INFO"
     

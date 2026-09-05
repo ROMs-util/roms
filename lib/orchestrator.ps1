@@ -368,6 +368,7 @@ function Stage-Package {
         
         Write-Log "Staging $($pkg.name) (v$($pkg.version))..." "INFO"
         if ($resolvedUrl.StartsWith("http")) {
+            Assert-RomsSecureUrl -Url $resolvedUrl
             Invoke-RestMethod -Uri $resolvedUrl -OutFile $stagedPath
             if (Test-Path $stagedPath) { Write-Log "Downloaded artifact to staging: $(Split-Path $stagedPath -Leaf)" "TRACE" }
         } else {
