@@ -79,8 +79,7 @@ if ($command -eq "install") {
 
                 # SCHEDULE AGGRESSIVE CLEANUP: Wait for current PID and its children to exit.
                 $cleanupPath = $potentialFile.FullName
-                $safePath = $cleanupPath -replace "'", "''"
-                $cleanupScript = "while (Get-Process -Id $PID -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 500 }; if (Test-Path '$safePath') { Remove-Item '$safePath' -Force }"
+                $cleanupScript = "while (Get-Process -Id $PID -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 500 }; if (Test-Path '$cleanupPath') { Remove-Item '$cleanupPath' -Force }"
                 Start-Process powershell -WindowStyle Hidden -ArgumentList "-ExecutionPolicy Bypass", "-Command", $cleanupScript
             }
         }
@@ -125,7 +124,6 @@ if ($command -in @("select", "source", "install", "uninstall", "update")) {
     if ($command -eq "source" -and $subArgs[0] -in @("on", "off")) { $needsWrite = $true }
     elseif ($command -in @("select")) { $needsWrite = $true }
 
-#    if ($needsWrite -or $command -in @("install", "uninstall")) {
     if ($needsWrite) {
         Confirm-RomsElevation | Out-Null
         Enter-RomsTransaction

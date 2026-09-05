@@ -56,20 +56,11 @@ function Get-RomsDependencyList {
 
         Write-Log "Tracing dependency: $depName (Constraint: $constraint)" "TRACE"
 
-        # 3. Check if already installed with satisfying version
+        # 3. Check if already installed
         $metaPath = [System.IO.Path]::Combine($global:ROMs_METADATA, "$depName.json")
         if ([System.IO.File]::Exists($metaPath)) {
-            try {
-                $meta = [System.IO.File]::ReadAllText($metaPath) | ConvertFrom-Json
-                $installedVersion = $meta.version
-                if ($installedVersion -and (Test-RomsVersionMatch -CurrentVersion $installedVersion -Constraint $constraint)) {
-                    Write-Log "Dependency '$depName' already installed (v$installedVersion) satisfies '$constraint'. Skipping." "TRACE"
-                    continue
-                }
-                Write-Log "Dependency '$depName' installed v$installedVersion does NOT satisfy '$constraint'. Will upgrade." "TRACE"
-            } catch {
-                Write-Log "Could not read metadata for '$depName'. Proceeding with resolution." "WARN"
-            }
+            Write-Log "Dependency '$depName' already installed. Skipping." "TRACE"
+            continue
         }
 
         # 4. Detect Circular Dependencies

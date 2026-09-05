@@ -63,12 +63,8 @@ function Get-RomsActiveChannel {
         if (Test-Path $sessionFile) {
             $sessionData = Get-Content $sessionFile -Raw | ConvertFrom-Json
             if ($null -ne $sessionData.channel) { 
-                if ($sessionData.channel -match '^[a-zA-Z0-9_\-]+$') {
-                    Write-Log "Session Channel Active: $($sessionData.channel) (Host: $sid)" "TRACE"
-                    return $sessionData.channel 
-                } else {
-                    Write-Log "Invalid session channel string detected in '$sessionFile'. Ignoring corrupted session state." "WARN"
-                }
+                Write-Log "Session Channel Active: $($sessionData.channel) (Host: $sid)" "TRACE"
+                return $sessionData.channel 
             }
         }
     } catch { }
@@ -200,10 +196,6 @@ function Show-RomsSourceList {
 function Set-RomsChannelStatus {
     param([string]$Channel, [string]$Status)
     if (-not $Channel) { Write-Log "Channel name required." "ERROR"; return }
-    if ($Channel -notmatch '^[a-zA-Z0-9_\-]+$') {
-        Write-Log "Invalid channel name: '$Channel'. Only alphanumeric characters, hyphens, and underscores are permitted." "ERROR"
-        return
-    }
 
     try {
         if (-not (Test-Path $global:ROMs_SOURCES)) { Initialize-Sources }
@@ -248,10 +240,6 @@ function Set-RomsChannelStatus {
 function Set-RomsPreferredChannel {
     param([string]$Channel)
     if (-not $Channel) { Write-Log "Channel name required." "ERROR"; return }
-    if ($Channel -notmatch '^[a-zA-Z0-9_\-]+$') {
-        Write-Log "Invalid channel name: '$Channel'. Only alphanumeric characters, hyphens, and underscores are permitted." "ERROR"
-        return
-    }
 
     # Validate channel exists in any active source
     if (-not (Test-Path $global:ROMs_SOURCES)) { Initialize-Sources }
