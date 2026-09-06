@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Fixed
+- **Nested Array Pipeline Unrolling**: `lib/resolver.ps1`, `lib/orchestrator.ps1` — Removed unary comma return operator (`return ,$CollectedList`) in `Get-RomsDependencyList` which caused the caller's `@(...)` array subexpression in `Invoke-RomsMultiInstall` to generate a nested 2D array (`[ [string[]]@() ]`). Iterating `$CollectedList` evaluated `$item` as an inner array instead of a string, causing `.StartsWith()` method invocation failures. Added defensive string type guards in both resolver and orchestrator loops.
+
+## [v0.10.1-beta.1] - 2026-09-06
 ### Security Fixed
 - **Unsanitized Command Name in Alternatives (L1)**: `lib/alternatives.ps1` — Validated `$CommandName` against `^[a-zA-Z0-9_\-]+$` in `Manage-Shim` and `Register-Alternative` before constructing shim path `C:\roms\bin\$CommandName.bat`, preventing path traversal (`..`) or file creation/deletion outside `C:\roms\bin`.
 

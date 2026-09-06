@@ -82,7 +82,8 @@ function Get-RomsDependencyList {
         # 5. Skip if already collected for this run
         $alreadyCollected = $false
         foreach ($item in $CollectedList) {
-            if ($item -eq $depName -or $item.StartsWith("${depName}:")) {
+            # Type guard ensures safe string evaluation if non-string enters the collection
+            if ($item -is [string] -and ($item -eq $depName -or $item.StartsWith("${depName}:"))) {
                 $alreadyCollected = $true
                 break
             }
@@ -100,7 +101,7 @@ function Get-RomsDependencyList {
 
         # 7. Discover Sub-Dependencies (Recursion)
         if ($pkg.dependencies) {
-            $CollectedList = Get-RomsDependencyList -Dependencies $pkg.dependencies -ResolutionStack ($ResolutionStack + $depName) -CollectedList $CollectedList
+            $CollectedList = @(Get-RomsDependencyList -Dependencies $pkg.dependencies -ResolutionStack ($ResolutionStack + $depName) -CollectedList $CollectedList)
         }
 
         # 8. Add specific versioned identifier to the list
@@ -110,8 +111,8 @@ function Get-RomsDependencyList {
     }
 
     Write-Log "Raw Collected List: $($CollectedList -join ', ')" "RAW"
-    # Unary comma forces array preservation. Without it, a single-element list
-    # is unrolled into a bare [String] by the pipeline, causing the caller's
-    # '+=' to do string concatenation instead of array append.
-    return ,$CollectedList
+    # Stream the array directly into the pipeline without a unary comma.
+    # Callers wrap with @(...) to guarantee a flat 1D array across all cases
+    # (0, 1, or multiple items), preventing nested array wrapping ([ [string[]]@() ]).
+    return $CollectedList
 }

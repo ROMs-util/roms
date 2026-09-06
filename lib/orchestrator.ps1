@@ -81,8 +81,9 @@ function Invoke-RomsMultiInstall {
                 # Append this top-level package (version-locked) if not already in the list.
                 $versionedId = "$($pkg.name):$($pkg.version)"
                 $alreadyIn = $false
+                # Scan for duplicates; type guard ensures safe string evaluation
                 foreach ($item in $CollectedList) {
-                    if ($item -eq $pkg.name -or $item.StartsWith("$($pkg.name):")) {
+                    if ($item -is [string] -and ($item -eq $pkg.name -or $item.StartsWith("$($pkg.name):"))) {
                         $alreadyIn = $true; break
                     }
                 }
