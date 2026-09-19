@@ -6,6 +6,10 @@
 
 $ErrorActionPreference = "Stop"
 
+# Truncate master log to prevent stale entries from contaminating test results.
+$MasterLog = "C:\roms\logs\roms.log"
+if (Test-Path $MasterLog) { Set-Content -Path $MasterLog -Value "" -Encoding utf8 -Force }
+
 $script:Pass = 0
 $script:Fail = 0
 $script:CleanList = @()
