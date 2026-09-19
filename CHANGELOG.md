@@ -5,7 +5,7 @@ All notable changes to the `roms` package manager will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v0.10.1-beta.2] - 2026-09-06
 ### Fixed
 - **Nested Array Pipeline Unrolling**: `lib/resolver.ps1`, `lib/orchestrator.ps1` — Removed unary comma return operator (`return ,$CollectedList`) in `Get-RomsDependencyList` which caused the caller's `@(...)` array subexpression in `Invoke-RomsMultiInstall` to generate a nested 2D array (`[ [string[]]@() ]`). Iterating `$CollectedList` evaluated `$item` as an inner array instead of a string, causing `.StartsWith()` method invocation failures. Added defensive string type guards in both resolver and orchestrator loops.
 
