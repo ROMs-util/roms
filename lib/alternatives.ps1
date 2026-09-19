@@ -127,7 +127,7 @@ function Manage-Shim {
 
     try {
         # Use our Native .NET utility for clean write (prevents encoding/quote issues)
-        Set-RomsFileContent -FilePath $shimPath -Content $batContent -Encoding ([System.Text.Encoding]::ASCII)
+        Set-RomsFileContent -FilePath $shimPath -Content $batContent -Encoding ([System.Text.UTF8Encoding]::new($true))
         if (Test-Path $shimPath) {
             Write-Log "Shim successfully created: $CommandName ($shimPath)" "TRACE"
         }
