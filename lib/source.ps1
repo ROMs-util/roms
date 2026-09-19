@@ -199,7 +199,7 @@ function Show-RomsSourceList {
 # ---------------------------------------------
 function Set-RomsChannelStatus {
     param([string]$Channel, [string]$Status)
-    if (-not $Channel) { Write-Log "Channel name required." "ERROR"; return }
+    if ([string]::IsNullOrWhiteSpace($Channel)) { Write-Log "Channel name required." "ERROR"; return }
     if ($Channel -notmatch '^[a-zA-Z0-9_\-]+$') {
         Write-Log "Invalid channel name: '$Channel'. Only alphanumeric characters, hyphens, and underscores are permitted." "ERROR"
         return
@@ -247,7 +247,7 @@ function Set-RomsChannelStatus {
 # ---------------------------------------------
 function Set-RomsPreferredChannel {
     param([string]$Channel)
-    if (-not $Channel) { Write-Log "Channel name required." "ERROR"; return }
+    if ([string]::IsNullOrWhiteSpace($Channel)) { Write-Log "Channel name required." "ERROR"; return }
     if ($Channel -notmatch '^[a-zA-Z0-9_\-]+$') {
         Write-Log "Invalid channel name: '$Channel'. Only alphanumeric characters, hyphens, and underscores are permitted." "ERROR"
         return
