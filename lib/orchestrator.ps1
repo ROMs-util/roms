@@ -161,6 +161,7 @@ function Invoke-RomsMultiInstall {
             }
         }
         Write-Log "System restored to pre-install state." "WARN"
+        throw
 
     } finally {
         # Cleanup shared staging directory
@@ -311,6 +312,7 @@ function Invoke-RomsInstall {
         }
 
         Write-Log "System remains clean. No system modifications were committed." "WARN"
+        throw
     } finally {
         # Cleanup Staging
         if (Test-Path $stagingDir) { 
