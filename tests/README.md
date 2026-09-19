@@ -10,6 +10,7 @@ Unit, integration, and end-to-end tests for the `roms` high-level package manage
 | `Test-Utilities.ps1` | Unit | `lib/util.ps1` — `Get-RomsRawArguments`, `Assert-RomsSecureUrl`, `Get-RomsFileHash`, `Set-RomsFileContent`, `Get-RomsResolvedUrl` | 25/25 |
 | `Test-Alternatives.ps1` | Unit | `lib/alternatives.ps1` — `Manage-Shim`, `Register-Alternative`, `Unregister-Alternative`, auto-pivot | 22/22 |
 | `Run-E2E.ps1` | Integration | Full lifecycle: `update`, `search`, `install`, `list`, `uninstall`, `source list` | 19/19 |
+| `Run-Lab.ps1` | Lab Integration | All `package_testnet` scenarios: recursive resolver, rollback, alternatives, hooks, env vars, SemVer matrix | 53/53 |
 | `Negative-Cases.ps1` | Negative | Error paths: nonexistent packages, corrupted metadata, invalid inputs | 8/8 |
 
 ## Architecture
@@ -38,6 +39,9 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File tests\Test-Alternatives.ps1
 
 # E2E tests (modifies live environment — installs/uninstalls helper)
 pwsh -NoProfile -ExecutionPolicy Bypass -File tests\Run-E2E.ps1
+
+# Lab tests (exercises all package_testnet scenarios — installs/uninstalls many packages)
+pwsh -NoProfile -ExecutionPolicy Bypass -File tests\Run-Lab.ps1
 
 # Negative cases (modifies live environment temporarily)
 pwsh -NoProfile -ExecutionPolicy Bypass -File tests\Negative-Cases.ps1
