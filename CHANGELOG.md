@@ -5,6 +5,18 @@ All notable changes to the `roms` package manager will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.10.1-beta.3] - 2026-09-20
+### Fixed
+- **Re-throw after rollback so caller knows install failed**: `lib/orchestrator.ps1` — catch blocks in `Invoke-RomsMultiInstall` and `Invoke-RomsInstall` swallowed exceptions after rollback, causing `roms.ps1` to exit 0 even on failure. Added bare `throw` after the rollback log in both catch blocks so the exception propagates to the router.
+- **Reject empty or whitespace-only channel names**: `lib/source.ps1` — `Set-RomsChannelStatus` and `Set-RomsPreferredChannel` used `-not $Channel` which silently accepted empty strings. Changed to `[string]::IsNullOrWhiteSpace($Channel)` to properly reject empty and whitespace-only channel names at parse time.
+- **Write .bat shims with UTF-8 BOM**: `lib/alternatives.ps1` — shim `.bat` files were written with ASCII encoding, causing cp1252 codepage interpretation risk for non-ASCII paths. Changed to UTF-8 with BOM (`[System.Text.UTF8Encoding]::new($true)`) so cmd.exe interprets shims correctly regardless of system codepage.
+
+### Test
+- **Comprehensive test suite**: `tests/Test-SemVer.ps1` (74 unit tests), `tests/Test-Utilities.ps1` (25 unit tests), `tests/Test-Alternatives.ps1` (22 unit tests), `tests/Run-E2E.ps1` (19 integration tests), `tests/Negative-Cases.ps1` (8 error-path tests). Baseline: 148/148.
+- **Lab integration tests**: `tests/Run-Lab.ps1` — 53 scenarios using `package_testnet`: recursive resolver, atomic AVC cleanup, transactional rollback, global rollback, alternatives auto-pivot, priority takeover, environment variables, lifecycle hooks, heterogeneous chain, SemVer resolution matrix.
+- **Test suite documentation**: `tests/README.md` — full architecture, run instructions, known edge cases.
+- **Master log truncation**: `tests/Run-Lab.ps1` — truncate `roms.log` at start of each run to prevent stale log contamination.
+
 ## [v0.10.1-beta.2] - 2026-09-06
 ### Fixed
 - **Nested Array Pipeline Unrolling**: `lib/resolver.ps1`, `lib/orchestrator.ps1` — Removed unary comma return operator (`return ,$CollectedList`) in `Get-RomsDependencyList` which caused the caller's `@(...)` array subexpression in `Invoke-RomsMultiInstall` to generate a nested 2D array (`[ [string[]]@() ]`). Iterating `$CollectedList` evaluated `$item` as an inner array instead of a string, causing `.StartsWith()` method invocation failures. Added defensive string type guards in both resolver and orchestrator loops.
